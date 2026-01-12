@@ -168,6 +168,25 @@
         </div>
     </div>
 </div>
+</div>
+
+<!-- Warning Modal -->
+<div class="modal fade" id="warningModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0">
+            <div class="modal-header bg-warning text-dark border-0">
+                <h5 class="modal-title fw-bold"><i class="fas fa-exclamation-triangle me-2"></i>알림</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4 text-center">
+                <p class="fs-5 mb-0" id="warningMsg">지난 날짜는 예약할 수 없습니다.</p>
+            </div>
+            <div class="modal-footer border-0 p-3 pt-0 justify-content-center">
+                <button type="button" class="btn btn-dark rounded-pill px-4" data-bs-dismiss="modal">확인</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 {% endblock %}
 
@@ -177,6 +196,7 @@
         var calendarEl = document.getElementById('calendar');
         var reserveModal = new bootstrap.Modal(document.getElementById('reserveModal'));
         var successModal = new bootstrap.Modal(document.getElementById('successModal'));
+        var warningModal = new bootstrap.Modal(document.getElementById('warningModal'));
         let selectedDate = null;
 
         // Populate Time Dropdowns (09:00 to 22:00)
@@ -312,7 +332,9 @@
             today.setHours(0, 0, 0, 0);
 
             if (selected < today) {
-                alert('지난 날짜는 예약할 수 없습니다.');
+                // alert('지난 날짜는 예약할 수 없습니다.');
+                document.getElementById('warningMsg').innerText = '지난 날짜는 예약할 수 없습니다.';
+                warningModal.show();
                 return;
             }
 
