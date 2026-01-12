@@ -308,6 +308,16 @@
         });
 
         function openReserveModal(dateStr) {
+            // Validate Past Date
+            const selected = new Date(dateStr);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+
+            if (selected < today) {
+                alert('지난 날짜는 예약할 수 없습니다.');
+                return;
+            }
+
             document.getElementById('resDate').value = dateStr;
             const items = dateStr.split('-');
             document.getElementById('displayDate').innerText = `${items[0]}년 ${items[1]}월 ${items[2]}일`;
