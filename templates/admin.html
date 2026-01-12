@@ -30,6 +30,14 @@
         <button class="nav-link fw-bold" id="backup-tab" data-bs-toggle="tab" data-bs-target="#backup" type="button">백업
             및 관리</button>
     </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link fw-bold text-danger" id="block-tab" data-bs-toggle="tab" data-bs-target="#block"
+            type="button">차단 관리</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link fw-bold text-primary" id="notification-tab" data-bs-toggle="tab"
+            data-bs-target="#notification" type="button"><i class="fas fa-bell me-1"></i>알림 설정</button>
+    </li>
 </ul>
 
 <div class="tab-content" id="adminTabsContent">
@@ -49,6 +57,7 @@
                                 <th>상태</th>
                                 <th>시간</th>
                                 <th>예약자</th>
+                                <th>사용 목적</th>
                                 <!-- Removed Address Column -->
                                 <th>메모</th>
                                 <th>관리</th>
@@ -73,7 +82,11 @@
                                 <td>
                                     {{ r.name }}<br>
                                     <small class="text-muted">{{ r.phone }}</small>
+                                    {% if r.phone in blocked_phones %}
+                                    <span class="badge bg-danger ms-1">차단됨</span>
+                                    {% endif %}
                                 </td>
+                                <td>{{ r.purpose }}</td>
                                 <!-- Removed Address Data -->
                                 <td>
                                     <div class="input-group input-group-sm" style="width: 200px;">
@@ -84,10 +97,16 @@
                                     </div>
                                 </td>
                                 <td>
+                                    {% if r.phone in blocked_phones %}
+                                    <button class="btn btn-sm btn-outline-secondary" disabled>
+                                        차단중
+                                    </button>
+                                    {% else %}
                                     <button class="btn btn-sm btn-outline-danger"
                                         onclick="blockUser('{{ r.phone }}', '{{ r.name }}')">
                                         차단
                                     </button>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
@@ -208,13 +227,10 @@
                 <div class="list-group list-group-flush">
                     {% if feedbacks %}
                     {% for f in feedbacks %}
-                    <div class="list-group-item p-4 border-bottom">
-                        <div class="d-flex w-100 justify-content-between align-items-center mb-2">
-                            <h6 class="mb-0 text-dark fw-bold">피드백 수신</h6>
-                            <small class="text-muted">{{ f.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
-                        </div>
-                        <div class="bg-light p-3 rounded text-break">
-                            {{ f.action }}
+                    <div class="list-group-item p-3">
+                        <div class="d-flex justify-content-between align-items-start">
+                            <div class="text-break me-3">{{ f.action }}</div>
+                            <small class="text-muted text-nowrap">{{ f.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
                         </div>
                     </div>
                     {% endfor %}
@@ -239,9 +255,181 @@
                     </div>
                     <h4 class="fw-bold">데이터베이스 백업</h4>
                     <p class="text-muted mb-4">현재까지의 모든 예약 데이터와 설정을 파일로 안전하게 저장합니다.</p>
+                    <!-- Backup Tab (Restored) -->
                     <a href="/admin/backup" class="btn btn-dark btn-lg">
                         <i class="fas fa-download me-2"></i>DB 파일 다운로드 (.sqlite)
                     </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="tab-pane fade" id="notification" role="tabpanel">
+        <div class="row justify-content-center">
+            <div class="col-md-10">
+                <div class="card shadow mb-4">
+                    <div class="card-header bg-white py-3">
+                        <h5 class="mb-0 fw-bold text-primary"><i class="fab fa-telegram-plane me-2"></i>텔레그램 알림 설정</h5>
+                    </div>
+                    <div class="card-body">
+
+                        <!-- Beginner Guide Accordion -->
+                        <div class="accordion mb-4 shadow-sm" id="telegramGuide">
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="headingGuide">
+                                    <button class="accordion-button collapsed fw-bold" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#collapseGuide">
+                                        🚀 텔레그램 알림 봇 만들기 (초보자 가이드) - 여기를 눌러보세요!
+                                    </button>
+                                </h2>
+                                <div id="collapseGuide" class="accordion-collapse collapse"
+                                    data-bs-parent="#telegramGuide">
+                                    <div class="accordion-body bg-light">
+                                        <h6 class="fw-bold mb-3">1단계: 텔레그램 봇 만들기</h6>
+                                        <ol class="small mb-4" style="line-height: 1.8;">
+                                            <li>텔레그램 앱 실행 후 상단 돋보기 <i class="fas fa-search"></i> 아이콘을 누르세요.</li>
+                                            <li>검색창에 <code>@BotFather</code>를 입력하고, 파란색 인증 마크(<i
+                                                    class="fas fa-check-circle text-primary"></i>)가 있는 공식 계정을 선택하세요.
+                                            </li>
+                                            <li>채팅방에 들어가서 하단의 <span class="badge bg-secondary">시작(Start)</span> 버튼을
+                                                <strong>꼭</strong> 누르세요.
+                                            </li>
+                                            <li>채팅창에 <code>/newbot</code> 이라고 입력하고 전송하세요.</li>
+                                            <li>"이름을 지어달라"고 하면 한글로 편하게 입력하세요 (예: <code>지혜마루 알림</code>).</li>
+                                            <li>"아이디(Username)를 지어달라"고 하면 영어로 입력하되, 반드시 끝이 <code>bot</code>으로 끝나야 합니다
+                                                (예: <code>jihyemaru_alarm_bot</code>).</li>
+                                            <li>성공하면 긴 <strong>API Token</strong>이 나옵니다. 이걸 복사해서 아래 <strong>[봇
+                                                    토큰]</strong> 칸에 붙여넣으세요.</li>
+                                        </ol>
+
+                                        <h6 class="fw-bold mb-3">2단계: 내 아이디(Chat ID) 알아내기 <span
+                                                class="text-danger">(중요!)</span></h6>
+                                        <ol class="small mb-0" style="line-height: 1.8;">
+                                            <li>방금 만든 내 봇을 검색해서 채팅방에 들어갑니다.</li>
+                                            <li><span class="badge bg-success">시작</span> 버튼을 누르고, <code>안녕</code> 이라고
+                                                메시지를 하나 보내세요. (메시지를 안 보내면 아이디를 못 찾습니다)</li>
+                                            <li>인터넷 브라우저 새 창을 열고 주소창에 다음을 입력하세요:<br>
+                                                <code>https://api.telegram.org/bot[토큰]/getUpdates</code><br>
+                                                <span class="text-muted" style="font-size: 0.85em;">(※
+                                                    <strong>[토큰]</strong> 자리에 아까 복사한 긴 토큰을 붙여넣으세요)</span>
+                                            </li>
+                                            <li>화면에 복잡한 글자들이 나오면 <code>"chat":{"id":12345...</code> 부분을 찾으세요. 그 옆의 숫자가
+                                                본인의 <strong>Chat ID</strong>입니다.</li>
+                                            <li>그 숫자를 아래 <strong>[채팅방 ID]</strong> 칸에 붙여넣으세요.</li>
+                                        </ol>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Handover Guide -->
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="headingHandover">
+                                    <button class="accordion-button collapsed fw-bold text-dark" type="button"
+                                        data-bs-toggle="collapse" data-bs-target="#collapseHandover">
+                                        👨‍🏫 관리자가 바뀔 때는 어떻게 하나요? (인수인계 방법)
+                                    </button>
+                                </h2>
+                                <div id="collapseHandover" class="accordion-collapse collapse"
+                                    data-bs-parent="#telegramGuide">
+                                    <div class="accordion-body bg-white">
+                                        <p class="small text-muted mb-3">관리자가 변경되어 알림을 받을 사람이 달라질 때 참고하세요.</p>
+
+                                        <h6 class="fw-bold text-primary mb-2">방법 1. 단체 채팅방 사용하기 (추천 👍)</h6>
+                                        <ul class="small mb-3 text-muted">
+                                            <li>텔레그램에서 <strong>단체방</strong>을 만들고, 봇과 관리자들을 모두 초대하세요.</li>
+                                            <li>단체방의 Chat ID를 한 번만 등록해두면, 관리자가 바뀌어도 설정 변경 없이 <strong>초대/나가기</strong>만 하면
+                                                됩니다.</li>
+                                        </ul>
+
+                                        <h6 class="fw-bold text-success mb-2">방법 2. 설정만 바꾸기</h6>
+                                        <ul class="small mb-0 text-muted">
+                                            <li>새 관리자가 본인의 텔레그램 Chat ID를 알아냅니다 (위 가이드 2단계 참고).</li>
+                                            <li>이 화면에서 <strong>[채팅방 ID]</strong> 칸의 숫자만 새 관리자의 것으로 바꿔서
+                                                <strong>저장</strong>하세요.
+                                            </li>
+                                            <li>(봇 토큰은 바꿀 필요가 없습니다)</li>
+                                        </ul>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+
+                    <!-- Config Form -->
+                    <div class="card-body border-top p-4">
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">봇 토큰 (Bot Token)</label>
+                            <input type="text" class="form-control" id="telegramToken"
+                                placeholder="123456789:ABCdefGHIjkl..." value="{{ settings.telegram_token }}">
+                            <div class="form-text">BotFather에게 발급받은 API Token을 입력하세요.</div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">채팅방 ID (Chat ID)</label>
+                            <input type="text" class="form-control" id="telegramChatId" placeholder="123456789"
+                                value="{{ settings.telegram_chat_id }}">
+                            <div class="form-text">알림을 받을 채팅방의 숫자 ID입니다.</div>
+                        </div>
+
+                        <hr>
+
+                        <div class="d-flex justify-content-between">
+                            <button class="btn btn-outline-info" id="btnTestTelegram">
+                                <i class="fas fa-paper-plane me-1"></i>테스트 발송
+                            </button>
+                            <button class="btn btn-primary px-4" id="btnSaveTelegram">
+                                <i class="fas fa-save me-1"></i>저장
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Block Management Tab -->
+    <div class="tab-pane fade" id="block" role="tabpanel">
+        <div class="card shadow">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold text-danger"><i class="fas fa-ban me-2"></i>차단된 사용자 목록</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>이름</th>
+                                <th>전화번호</th>
+                                <th>차단 사유</th>
+                                <th>해제 예정일</th>
+                                <th>관리</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% if blocked_users %}
+                            {% for b in blocked_users %}
+                            <tr>
+                                <td class="fw-bold">{{ b.name }}</td>
+                                <td>{{ b.phone }}</td>
+                                <td class="text-danger small">{{ b.reason }}</td>
+                                <td>{{ b.release_date.strftime('%Y-%m-%d %H:%M') }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-success"
+                                        onclick="unblockUser('{{ b.phone }}', '{{ b.name }}')">
+                                        <i class="fas fa-unlock me-1"></i>해제
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center py-5 text-muted">
+                                    <i class="fas fa-user-check fa-3x mb-3 opacity-50"></i>
+                                    <p class="mb-0">차단된 사용자가 없습니다.</p>
+                                </td>
+                            </tr>
+                            {% endif %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
@@ -287,12 +475,15 @@
             });
     }
 
-    document.getElementById('btnSaveSettings').addEventListener('click', function () {
+    function saveAllSettings() {
         const payload = {
             notice_text: document.getElementById('setNotice').value,
             wifi_info: document.getElementById('setWifi').value,
-            door_pw: document.getElementById('setDoor').value
+            door_pw: document.getElementById('setDoor').value,
+            telegram_token: document.getElementById('telegramToken') ? document.getElementById('telegramToken').value : '',
+            telegram_chat_id: document.getElementById('telegramChatId') ? document.getElementById('telegramChatId').value : ''
         };
+
         fetch('/admin/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -302,7 +493,40 @@
             .then(data => {
                 if (data.success) showAlert('설정이 저장되었습니다.');
             });
-    });
+    }
+
+    document.getElementById('btnSaveSettings').addEventListener('click', saveAllSettings);
+
+    // Telegram Listeners
+    const btnSaveTelegram = document.getElementById('btnSaveTelegram');
+    if (btnSaveTelegram) btnSaveTelegram.addEventListener('click', saveAllSettings);
+
+    const btnTestTelegram = document.getElementById('btnTestTelegram');
+    if (btnTestTelegram) {
+        btnTestTelegram.addEventListener('click', function () {
+            const token = document.getElementById('telegramToken').value;
+            const chatId = document.getElementById('telegramChatId').value;
+
+            if (!token || !chatId) {
+                showAlert('토큰과 채팅 ID를 먼저 입력해주세요.');
+                return;
+            }
+
+            fetch('/admin/test_telegram', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: token, chat_id: chatId })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('테스트 메시지가 성공적으로 전송되었습니다!\n폰을 확인해보세요.');
+                    } else {
+                        showAlert('전송 실패:\n' + data.error);
+                    }
+                });
+        });
+    }
 
     function blockUser(phone, name) {
         if (!confirm(`정말 ${name}님을 30일간 차단하시겠습니까?`)) return;
@@ -318,6 +542,22 @@
                     showAlert('차단되었습니다.', function () {
                         location.reload();
                     });
+                }
+            });
+    }
+
+    function unblockUser(phone, name) {
+        if (!confirm(`${name}님의 차단을 해제하시겠습니까?`)) return;
+
+        fetch(`/admin/unblock/${phone}`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('차단이 해제되었습니다.', function () {
+                        location.reload();
+                    });
+                } else {
+                    showAlert('해제 실패: ' + (data.error || 'Unknown'));
                 }
             });
     }
@@ -402,9 +642,10 @@
         const row = document.createElement('div');
         row.className = 'input-group mb-2';
         row.innerHTML = `
-            <span class="input-group-text bg-white border-end-0"><i class="fas fa-calendar-alt text-muted"></i></span>
-            <input type="text" class="form-control bg-white range-input" placeholder="기간 선택" readonly>
-            <button class="btn btn-outline-danger btn-remove-range" type="button"><i class="fas fa-times"></i></button>
+                                    <span class="input-group-text bg-white border-end-0"><i class="fas fa-calendar-alt text-muted"></i></span>
+                                    <input type="text" class="form-control bg-white range-input" placeholder="기간 선택" readonly>
+                                        <input type="text" class="form-control range-reason" placeholder="사유 (선택)" value="${data && data.reason ? data.reason : ''}">
+                                            <button class="btn btn-outline-danger btn-remove-range" type="button"><i class="fas fa-times"></i></button>
         `;
         rangesContainer.appendChild(row);
 
@@ -471,7 +712,9 @@
                 if (input._flatpickr && input._flatpickr.selectedDates.length === 2) {
                     const start = input._flatpickr.formatDate(input._flatpickr.selectedDates[0], "Y-m-d");
                     const end = input._flatpickr.formatDate(input._flatpickr.selectedDates[1], "Y-m-d");
-                    ranges.push({ start: start, end: end });
+                    // siblings
+                    const reason = input.closest('.input-group').querySelector('.range-reason').value;
+                    ranges.push({ start: start, end: end, reason: reason });
                     hasValid = true;
                 }
             });

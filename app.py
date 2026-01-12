@@ -8,6 +8,7 @@ from ics import Calendar, Event
 import shutil
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont # Added for QR Poster
+import requests # Added for Telegram Notifications
 
 load_dotenv()
 
@@ -178,11 +179,33 @@ def log_admin_action(admin_type, action):
     except:
         pass # Fail silently for logs
 
+def send_telegram_alert(message, token=None, chat_id=None):
+    if not token:
+        token = get_setting('telegram_token') or os.environ.get('TELEGRAM_BOT_TOKEN')
+    if not chat_id:
+        chat_id = get_setting('telegram_chat_id') or os.environ.get('TELEGRAM_CHAT_ID')
+    
+    if not token or not chat_id:
+        return
+
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {
+            'chat_id': chat_id,
+            'text': message
+        }
+        # Short timeout to avoid blocking main thread too long
+        requests.post(url, json=payload, timeout=2) 
+    except Exception as e:
+        print(f"Failed to send Telegram alert: {e}")
+
 # --- Routes ---
 
 @app.route('/')
 def index():
-    notice = get_setting('notice_text', '지혜마루 작은 도서관 예약 시스템에 오신 것을 환영합니다.')
+    notice = get_setting('notice_text', '').strip()
+    if not notice:
+        notice = "없음"
     return render_template('index.html', notice=notice)
 
 @app.route('/my')
@@ -220,13 +243,20 @@ def admin_page():
         'reservation_paused': get_setting('reservation_paused') == 'true',
         'pause_reason': get_setting('pause_reason'),
         'pause_mode': get_setting('pause_mode', 'all'),
-        'pause_ranges': current_ranges 
+        'pause_mode': get_setting('pause_mode', 'all'),
+        'pause_ranges': current_ranges,
+        'telegram_token': get_setting('telegram_token', ''),
+        'telegram_chat_id': get_setting('telegram_chat_id', '')
     }
     
     # Fetch Feedback
     feedbacks = AdminLog.query.filter_by(admin_type='feedback').order_by(AdminLog.timestamp.desc()).limit(50).all()
 
-    return render_template('admin.html', reservations=reservations, settings=settings, feedbacks=feedbacks)
+    # Fetch Blocklist
+    blocked_users = Blacklist.query.order_by(Blacklist.release_date.desc()).all()
+    blocked_phones = [b.phone for b in blocked_users]
+
+    return render_template('admin.html', reservations=reservations, settings=settings, feedbacks=feedbacks, blocked_users=blocked_users, blocked_phones=blocked_phones)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -326,9 +356,10 @@ def get_reservations():
                     end_obj = datetime.strptime(p_end, '%Y-%m-%d') + timedelta(days=1)
                     p_end_exclusive = end_obj.strftime('%Y-%m-%d')
                     
+                    range_reason = rng.get('reason', reason)
                     event_list.append({
                         'id': f'blocked_partial_{idx}',
-                        'title': f'⛔ 예약 서비스 중지 ({reason})',
+                        'title': f'⛔ 예약 서비스 중지 ({range_reason})',
                         'start': p_start,
                         'end': p_end_exclusive,
                         'color': '#ff4444', 
@@ -389,9 +420,12 @@ def create_reservation():
             # Check overlap
             res_date = start_time.strftime('%Y-%m-%d')
             for rng in pause_ranges:
-                # Assuming rng is {start: 'YYYY-MM-DD', end: 'YYYY-MM-DD'}
+                # Assuming rng is {start: 'YYYY-MM-DD', end: 'YYYY-MM-DD', reason: '...'}
                 if rng.get('start') <= res_date <= rng.get('end'):
                     should_block = True
+                    # Use specific reason if available
+                    if rng.get('reason'):
+                        reason = rng.get('reason')
                     break
                     
         if should_block:
@@ -441,6 +475,14 @@ def create_reservation():
     )
     db.session.add(new_res)
     db.session.commit()
+    
+    # Telegram Alert
+    try:
+        msg = f"[새 예약 알림]\n- 예약자: {new_res.name}\n- 전화번호: {new_res.phone}\n- 시간: {new_res.start_time.strftime('%Y-%m-%d %H:%M')} ~ {new_res.end_time.strftime('%H:%M')}\n- 목적: {new_res.purpose}"
+        send_telegram_alert(msg)
+    except:
+        pass # Fail silently
+
     
     return jsonify({'success': True, 'id': new_res.id}), 201
 
@@ -621,8 +663,31 @@ def update_settings():
     set_setting('notice_text', data.get('notice_text', ''))
     set_setting('wifi_info', data.get('wifi_info', ''))
     set_setting('door_pw', data.get('door_pw', ''))
+    set_setting('telegram_token', data.get('telegram_token', ''))
+    set_setting('telegram_chat_id', data.get('telegram_chat_id', ''))
     
     return jsonify({'success': True})
+
+@app.route('/admin/test_telegram', methods=['POST'])
+def test_telegram():
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.json
+    token = data.get('token')
+    chat_id = data.get('chat_id')
+    
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendMessage"
+        payload = {'chat_id': chat_id, 'text': "[테스트 알림] 설정이 정상적으로 완료되었습니다!"}
+        res = requests.post(url, json=payload, timeout=5)
+        
+        if res.status_code == 200:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': f"전송 실패 (Code: {res.status_code}): {res.text}"})
+    except Exception as e:
+        return jsonify({'error': str(e)})
 
 @app.route('/admin/memo/<int:id>', methods=['POST'])
 def update_admin_memo(id):
@@ -724,7 +789,19 @@ def manual_block(phone):
         db.session.add(bl)
         
     db.session.commit()
-    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/admin/unblock/<phone>', methods=['POST'])
+def manual_unblock(phone):
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    blocked = Blacklist.query.filter_by(phone=phone).first()
+    if blocked:
+        db.session.delete(blocked)
+        db.session.commit()
+        log_admin_action('admin', f'Unblocked User: {blocked.name} ({phone})')
+        
     return jsonify({'success': True})
 
 @app.route('/admin/toggle_pause', methods=['POST'])
@@ -748,7 +825,8 @@ def toggle_pause():
         set_setting('pause_ranges', json.dumps(ranges))
         
         # Notice Logic
-        set_setting('original_notice', get_setting('notice_text')) # Backup
+        current_notice = get_setting('notice_text', '')
+        set_setting('original_notice', current_notice) # Backup
         
         if mode == 'all':
             notice_msg = f"[예약 중지 안내] {reason}"
@@ -767,9 +845,11 @@ def toggle_pause():
     else:
         set_setting('reservation_paused', 'false')
         # Restore original notice if exists
+        # We prefer storing empty string if original was empty
         orig = get_setting('original_notice')
-        if orig:
-            set_setting('notice_text', orig)
+        if orig is not None:
+             set_setting('notice_text', orig)
+        
         log_admin_action('admin', 'Resumed Reservations')
         
     return jsonify({'success': True})
