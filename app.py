@@ -45,7 +45,8 @@ class Reservation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False)
     phone = db.Column(db.String(20), nullable=False)
-    address = db.Column(db.String(200), nullable=False)
+    phone = db.Column(db.String(20), nullable=False)
+    password = db.Column(db.String(20), nullable=False) # Changed from address
     start_time = db.Column(db.DateTime, nullable=False)
     end_time = db.Column(db.DateTime, nullable=False)
     purpose = db.Column(db.String(200), nullable=True)
@@ -160,11 +161,11 @@ def create_reservation():
     data = request.json
     name = data.get('name')
     phone = data.get('phone')
-    address = data.get('address')
+    password = data.get('password')
     start_str = data.get('start')
     end_str = data.get('end')
     
-    if not all([name, phone, address, start_str, end_str]):
+    if not all([name, phone, password, start_str, end_str]):
         return jsonify({'error': '필수 입력 항목이 누락되었습니다.'}), 400
 
     try:
@@ -210,7 +211,7 @@ def create_reservation():
     new_res = Reservation(
         name=name.strip(),
         phone=phone.strip(),
-        address=address.strip(),
+        password=password.strip(),
         start_time=start_time,
         end_time=end_time
     )
@@ -239,10 +240,16 @@ def download_ics(id):
 @app.route('/api/my_reservations', methods=['GET'])
 def my_reservations_api():
     phone = request.args.get('phone')
-    if not phone:
-        return jsonify({'error': '전화번호가 필요합니다.'}), 400
+    password = request.args.get('password')
+
+    if not phone or not password:
+        return jsonify({'error': '전화번호와 비밀번호가 필요합니다.'}), 400
         
-    reservations = Reservation.query.filter_by(phone=phone).order_by(Reservation.start_time.desc()).all()
+    # Match both phone and password
+    reservations = Reservation.query.filter_by(
+        phone=phone, 
+        password=password
+    ).order_by(Reservation.start_time.desc()).all()
     
     wifi_info = get_setting('wifi_info', '정보 없음')
     door_pw = get_setting('door_pw', '정보 없음')
@@ -252,7 +259,9 @@ def my_reservations_api():
         results.append({
             'id': r.id,
             'name': r.name,
-            'address': r.address,
+            'id': r.id,
+            'name': r.name,
+            # 'address': r.address, # Removed
             'status': r.status,
             'start': r.start_time.strftime('%Y-%m-%d %H:%M'),
             'end': r.end_time.strftime('%H:%M'),
@@ -387,7 +396,7 @@ def download_excel():
     ws.title = '예약내역'
     
     # Headers
-    headers = ['ID', '이름', '전화번호', '주소', '시작시간', '종료시간', '상태', '관리자 메모']
+    headers = ['ID', '이름', '전화번호', '시작시간', '종료시간', '상태', '관리자 메모']
     ws.append(headers)
     
     for r in reservations:
@@ -395,7 +404,6 @@ def download_excel():
             r.id,
             r.name,
             r.phone,
-            r.address,
             r.start_time,
             r.end_time,
             status_map.get(r.status, r.status),

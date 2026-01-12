@@ -17,6 +17,10 @@
                     <input type="tel" id="myPhone" class="form-control" placeholder="010-1234-5678">
                     <label for="myPhone">전화번호</label>
                 </div>
+                <div class="form-floating mb-3">
+                    <input type="password" id="myPassword" class="form-control" placeholder="비밀번호">
+                    <label for="myPassword">예약 비밀번호</label>
+                </div>
                 <div class="d-grid">
                     <button class="btn btn-primary btn-lg" id="btnLookUp">조회하기</button>
                 </div>
@@ -102,14 +106,18 @@
     document.getElementById('btnLogout').addEventListener('click', function () {
         document.getElementById('loginCard').style.display = 'block';
         document.getElementById('historySection').style.display = 'none';
+        document.getElementById('historySection').style.display = 'none';
         document.getElementById('myPhone').value = '';
+        document.getElementById('myPassword').value = '';
     });
 
     function loadHistory() {
         const phone = document.getElementById('myPhone').value;
-        if (!phone) return alert('전화번호를 입력하세요');
+        const password = document.getElementById('myPassword').value;
 
-        fetch(`/api/my_reservations?phone=${phone}`)
+        if (!phone || !password) return alert('전화번호와 비밀번호를 모두 입력하세요');
+
+        fetch(`/api/my_reservations?phone=${phone}&password=${password}`)
             .then(res => res.json())
             .then(data => {
                 if (data.error) {
@@ -170,7 +178,7 @@
                         ${statusMap[item.status] || item.status}
                     </div>
                     <div class="d-flex align-items-center text-muted small mb-3">
-                        <i class="fas fa-map-marker-alt me-2 text-danger"></i>${item.address}
+                        <!-- Address Removed -->
                     </div>
                     <div class="text-end border-top pt-3">
                         ${btnHtml}

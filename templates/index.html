@@ -98,10 +98,11 @@
                         <input type="tel" class="form-control" id="resPhone" required placeholder="예: 010-1234-5678">
                     </div>
                     <div class="mb-3">
-                        <label class="form-label fw-bold">주소 (동/호수)</label>
-                        <input type="text" class="form-control" id="resAddress" required placeholder="예: 101동 202호">
+                        <label class="form-label fw-bold">비밀번호</label>
+                        <input type="password" class="form-control" id="resPassword" required
+                            placeholder="예약 확인용 비밀번호 (4자리 이상)">
                         <div class="form-text small" style="color: #6c757d;">
-                            ※ 마을 주민 확인 및 동명이인 구분을 위해 동/호수까지 입력 부탁드립니다.
+                            ※ 나중에 예약을 확인하거나 취소할 때 사용됩니다.
                         </div>
                     </div>
 
@@ -199,12 +200,12 @@
         populateTimeOptions();
 
         // Load Remembered Info
-        if (localStorage.getItem('rememberMe') === 'true') {
-            document.getElementById('rememberMe').checked = true;
-            document.getElementById('resName').value = localStorage.getItem('userName') || '';
-            document.getElementById('resPhone').value = localStorage.getItem('userPhone') || '';
-            document.getElementById('resAddress').value = localStorage.getItem('userAddress') || '';
-        }
+        document.getElementById('rememberMe').checked = true;
+        document.getElementById('resName').value = localStorage.getItem('userName') || '';
+        document.getElementById('resPhone').value = localStorage.getItem('userPhone') || '';
+        // Don't autofill password for security, or maybe user wants it? 
+        // Requests usually imply convenience. Let's NOT save password by default for security, 
+        // but the previous code saved address. I will skip saving Password to localStorage for safety.
 
         // CAPTCHA
         let captchaAns = 0;
@@ -318,13 +319,13 @@
         document.getElementById('btnSubmit').addEventListener('click', function () {
             const name = document.getElementById('resName').value;
             const phone = document.getElementById('resPhone').value;
-            const address = document.getElementById('resAddress').value;
+            const password = document.getElementById('resPassword').value;
             const startTime = document.getElementById('resStartTime').value;
             const endTime = document.getElementById('resEndTime').value;
             const userCaptcha = parseInt(document.getElementById('captchaAnswer').value);
             const agreed = document.getElementById('agreeTerms').checked;
 
-            if (!name || !phone || !address) { alert('필수 정보를 모두 입력해주세요.'); return; }
+            if (!name || !phone || !password) { alert('필수 정보를 모두 입력해주세요.'); return; }
             if (startTime >= endTime) { alert('종료 시간은 시작 시간보다 뒤여야 합니다.'); return; }
             if (!agreed) { alert('약관에 동의해주세요.'); return; }
             if (userCaptcha !== captchaAns) { alert('자동 예약 방지 정답이 틀렸습니다.'); return; }
@@ -334,7 +335,6 @@
                 localStorage.setItem('rememberMe', 'true');
                 localStorage.setItem('userName', name);
                 localStorage.setItem('userPhone', phone);
-                localStorage.setItem('userAddress', address);
             } else {
                 localStorage.removeItem('rememberMe');
             }
@@ -342,7 +342,7 @@
             const payload = {
                 name: name,
                 phone: phone,
-                address: address,
+                password: password,
                 start: `${selectedDate}T${startTime}:00`,
                 end: `${selectedDate}T${endTime}:00`
             };
