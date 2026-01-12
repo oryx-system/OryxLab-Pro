@@ -7,8 +7,9 @@ conn = sqlite3.connect(db_path)
 cur = conn.cursor()
 
 try:
-    cur.execute("ALTER TABLE reservation ADD COLUMN signature_path TEXT")
-    print("Column 'signature_path' added successfully.")
+    # Add signature_blob column (BLOB)
+    cur.execute("ALTER TABLE reservation ADD COLUMN signature_blob BLOB")
+    print("Column 'signature_blob' added successfully.")
 except sqlite3.OperationalError as e:
     print(f"Column already exists or error: {e}")
 

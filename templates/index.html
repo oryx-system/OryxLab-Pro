@@ -40,7 +40,7 @@
     <div class="modal-dialog modal-dialog-centered">
         <div class="modal-content border-0 shadow-lg">
             <div class="modal-header bg-primary text-white border-0">
-                <h5 class="modal-title fw-bold">
+                <h5 class="modal-title fw-bold text-white">
                     <i class="fas fa-calendar-check me-2"></i>예약하기
                 </h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
@@ -67,7 +67,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">전화번호</label>
-                        <input type="tel" class="form-control" id="resPhone" required placeholder="예: 010-1234-5678">
+                        <input type="tel" class="form-control" id="resPhone" required placeholder="예: 01012345678">
                     </div>
 
                     <div class="mb-3">
@@ -108,13 +108,22 @@
                     </div>
 
                     <div class="mb-3">
-                        <label class="form-label fw-bold">자동 예약 방지</label>
-                        <div class="input-group">
-                            <span class="input-group-text bg-light border-0 fw-bold" id="captchaQuestion">3 + 5 =
-                                ?</span>
-                            <input type="number" class="form-control" id="captchaAnswer" required>
+                        <label class="form-label fw-bold">전자 서명 (필수)</label>
+
+                        <!-- Signature Preview Area -->
+                        <div id="signaturePreview" class="border rounded bg-white text-center p-3 mb-2"
+                            style="display: none; background-color: #f8f9fa;">
+                            <img id="sigImage" src="" class="img-fluid" style="max-height: 100px;">
                         </div>
+
+                        <!-- Open Modal Button -->
+                        <button type="button" class="btn btn-outline-dark w-100 py-3 border-2 border-dashed"
+                            id="btnOpenSignModal">
+                            <i class="fas fa-signature me-2"></i>서명하기 (터치)
+                        </button>
                     </div>
+
+
                 </form>
             </div>
             <div class="modal-footer border-0 p-4 pt-0">
@@ -163,6 +172,50 @@
             <div class="modal-footer border-0">
                 <button type="button" class="btn btn-light rounded-pill" data-bs-dismiss="modal">취소</button>
                 <button type="button" class="btn btn-dark rounded-pill px-4" id="btnSendFeedback">보내기</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Full Screen Signature Modal -->
+<!-- Full Screen Signature Modal -->
+<div class="modal fade" id="signatureModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static">
+    <div class="modal-dialog modal-fullscreen">
+        <div class="modal-content border-0">
+            <div class="modal-body p-0 position-relative bg-light d-flex align-items-center justify-content-center"
+                style="touch-action: none; overflow: hidden;">
+
+                <!-- Full Screen Canvas -->
+                <canvas id="fsSignaturePad"
+                    style="background: white; cursor: crosshair; touch-action: none; width: 100%; height: 100%; display: block;"></canvas>
+
+                <!-- Floating Controls -->
+                <!-- Close Button (Top Right) -->
+                <button type="button"
+                    class="btn btn-dark btn-sm rounded-circle shadow position-absolute top-0 end-0 m-3"
+                    id="btnCloseSignModal" style="width: 40px; height: 40px; z-index: 100;">
+                    <i class="fas fa-times"></i>
+                </button>
+
+                <!-- Helper Text (Top Center) -->
+                <div
+                    class="position-absolute top-0 start-50 translate-middle-x mt-3 text-muted small opacity-50 user-select-none pointer-events-none">
+                    <i class="fas fa-pen-nib me-1"></i>화면 전체를 사용하여 서명해주세요.
+                </div>
+
+                <!-- Floating Action Buttons (Bottom Center) -->
+                <div class="position-absolute bottom-0 start-50 translate-middle-x mb-4 d-flex gap-2"
+                    style="z-index: 100;">
+                    <button type="button" class="btn btn-secondary rounded-pill px-3 py-2 shadow-lg btn-sm"
+                        id="btnSignClear" style="min-width: 80px;">
+                        <i class="fas fa-redo me-1"></i>지우기
+                    </button>
+                    <button type="button" class="btn btn-primary rounded-pill px-4 py-2 shadow-lg fw-bold btn-sm"
+                        id="btnSignConfirm" style="min-width: 100px;">
+                        <i class="fas fa-check me-2"></i>완료
+                    </button>
+                </div>
+
             </div>
         </div>
     </div>
@@ -231,15 +284,7 @@
         document.getElementById('resPhone').value = localStorage.getItem('userPhone') || '';
         document.getElementById('resPassword').value = localStorage.getItem('userPassword') || '';
 
-        // CAPTCHA
-        let captchaAns = 0;
-        function refreshCaptcha() {
-            const a = Math.floor(Math.random() * 10);
-            const b = Math.floor(Math.random() * 10);
-            captchaAns = a + b;
-            document.getElementById('captchaQuestion').innerText = `${a} + ${b} = ?`;
-            document.getElementById('captchaAnswer').value = '';
-        }
+
 
         // Terms Scroll
         const termsBox = document.getElementById('termsBox');
@@ -249,12 +294,225 @@
             }
         });
 
-        // Calendar Init with Dynamic Responsive Logic
+        // --- Full Screen Signature Logic ---
+        const btnOpenSign = document.getElementById('btnOpenSignModal');
+        const signModalEl = document.getElementById('signatureModal');
+        const signModal = new bootstrap.Modal(signModalEl);
+        const btnCloseSign = document.getElementById('btnCloseSignModal');
+
+        const fsCanvas = document.getElementById('fsSignaturePad');
+        const fsCtx = fsCanvas.getContext('2d');
+        let isDrawing = false;
+        let hasSignature = false; // Tracks if current session has drawing
+        let finalSignatureData = null; // Stores confirmed signature
+
+        // Resize Full Screen Canvas
+        function resizeFsCanvas() {
+            const isLandscape = window.innerWidth > window.innerHeight;
+
+            if (isLandscape) {
+                // Landscape: Full Screen
+                fsCanvas.width = window.innerWidth;
+                fsCanvas.height = window.innerHeight;
+
+                // CRITICAL: Reset explicit styles so attribute-based tokens work 1:1
+                fsCanvas.style.width = '';
+                fsCanvas.style.height = '';
+
+                fsCanvas.style.borderRadius = "0";
+                fsCanvas.style.boxShadow = "none";
+            } else {
+                // Portrait: Boxed Mode
+                // 90% of width, Aspect Ratio 1.6:1
+                const width = window.innerWidth * 0.95;
+                const height = width / 1.6;
+
+                fsCanvas.width = width;
+                fsCanvas.height = height;
+
+                // Add visual frame for "Box" feel
+                fsCanvas.style.width = `${width}px`;
+                fsCanvas.style.height = `${height}px`;
+                fsCanvas.style.borderRadius = "12px";
+                fsCanvas.style.boxShadow = "0 10px 30px rgba(0,0,0,0.2)";
+            }
+
+            fsCtx.lineWidth = 3;
+            fsCtx.lineCap = 'round';
+            fsCtx.strokeStyle = '#000';
+        }
+
+        // Listen to resize to adapt dynamically
+        window.addEventListener('resize', resizeFsCanvas);
+
+        // Open Modal
+        btnOpenSign.addEventListener('click', function () {
+            signModal.show();
+        });
+
+        // When Modal Shows
+        signModalEl.addEventListener('shown.bs.modal', function () {
+            resizeFsCanvas();
+            fsCtx.clearRect(0, 0, fsCanvas.width, fsCanvas.height);
+            hasSignature = false; // Reset current drawing state
+        });
+
+        // Drawing Events (Touch & Mouse)
+        function getFsPos(e) {
+            const rect = fsCanvas.getBoundingClientRect();
+            let x, y;
+            if (e.touches && e.touches.length > 0) {
+                x = e.touches[0].clientX - rect.left;
+                y = e.touches[0].clientY - rect.top;
+            } else {
+                x = e.clientX - rect.left;
+                y = e.clientY - rect.top;
+            }
+            return { x, y };
+        }
+
+        function fsStart(e) {
+            isDrawing = true;
+            hasSignature = true;
+            const { x, y } = getFsPos(e);
+            fsCtx.beginPath();
+            fsCtx.moveTo(x, y);
+            e.preventDefault();
+        }
+
+        function fsDraw(e) {
+            if (!isDrawing) return;
+            const { x, y } = getFsPos(e);
+            fsCtx.lineTo(x, y);
+            fsCtx.stroke();
+            e.preventDefault();
+        }
+
+        function fsStop() {
+            isDrawing = false;
+            fsCtx.beginPath();
+        }
+
+        fsCanvas.addEventListener('mousedown', fsStart);
+        fsCanvas.addEventListener('mousemove', fsDraw);
+        fsCanvas.addEventListener('mouseup', fsStop);
+        fsCanvas.addEventListener('mouseout', fsStop);
+
+        fsCanvas.addEventListener('touchstart', fsStart, { passive: false });
+        fsCanvas.addEventListener('touchmove', fsDraw, { passive: false });
+        fsCanvas.addEventListener('touchend', fsStop);
+
+        // Clear Button (In Modal)
+        document.getElementById('btnSignClear').addEventListener('click', function () {
+            fsCtx.clearRect(0, 0, fsCanvas.width, fsCanvas.height);
+            hasSignature = false;
+        });
+
+        // Helper: Trim Canvas Whitespace & Scale to High Res
+        function trimCanvas(c) {
+            const ctx = c.getContext('2d');
+            const w = c.width;
+            const h = c.height;
+            const pix = { x: [], y: [] };
+            const imageData = ctx.getImageData(0, 0, w, h);
+            const data = imageData.data;
+
+            // 1. Scan for non-transparent/non-white pixels
+            for (let y = 0; y < h; y++) {
+                for (let x = 0; x < w; x++) {
+                    const idx = (y * w + x) * 4;
+                    // Check alpha > 0 (data[idx+3]) and not white (r,g,b < 255)
+                    // Since we draw black on transparent/white...
+                    // Check if alpha is high enough
+                    if (data[idx + 3] > 0) {
+                        pix.x.push(x);
+                        pix.y.push(y);
+                    }
+                }
+            }
+
+            if (pix.x.length === 0) return null; // Empty
+
+            // 2. Determine Bounding Box
+            pix.x.sort((a, b) => a - b);
+            pix.y.sort((a, b) => a - b);
+            const n = pix.x.length;
+            const minX = pix.x[0];
+            const minY = pix.y[0];
+            const maxX = pix.x[n - 1];
+            const maxY = pix.y[n - 1];
+
+            // Add padding
+            const padding = 10;
+            const cw = maxX - minX + (padding * 2);
+            const ch = maxY - minY + (padding * 2);
+
+            // 3. Create Trimmed Canvas
+            const trimmed = document.createElement('canvas');
+            trimmed.width = cw;
+            trimmed.height = ch;
+            const tCtx = trimmed.getContext('2d');
+
+            // Draw cropped area
+            tCtx.drawImage(c, minX - padding, minY - padding, cw, ch, 0, 0, cw, ch);
+
+            // 4. High-Res Scaling (Target Width ~ 600px for 200 DPI look)
+            const targetWidth = 600;
+            if (cw < targetWidth) {
+                const scale = targetWidth / cw;
+                const scaled = document.createElement('canvas');
+                scaled.width = targetWidth;
+                scaled.height = ch * scale;
+                const sCtx = scaled.getContext('2d');
+                sCtx.scale(scale, scale);
+                sCtx.drawImage(trimmed, 0, 0);
+                return scaled;
+            }
+
+            return trimmed;
+        }
+
+        // Confirm Button
+        document.getElementById('btnSignConfirm').addEventListener('click', function () {
+            if (!hasSignature) {
+                showAlert('서명을 해주세요.');
+                return;
+            }
+
+            // Generate Optimized Signature
+            const optimizedCanvas = trimCanvas(fsCanvas);
+
+            if (!optimizedCanvas) {
+                showAlert('서명이 너무 흐릿하거나 비어있습니다.');
+                return;
+            }
+
+            // Save Valid Signature
+            finalSignatureData = optimizedCanvas.toDataURL('image/png');
+
+            // Update Preview (CSS ensures it fits visually, but data is Hi-Res)
+            document.getElementById('sigImage').src = finalSignatureData;
+            document.getElementById('signaturePreview').style.display = 'block';
+
+            // Change Button Text
+            btnOpenSign.innerHTML = '<i class="fas fa-pen me-2"></i>서명 다시 하기';
+            btnOpenSign.classList.remove('btn-outline-dark');
+            btnOpenSign.classList.add('btn-outline-secondary');
+
+            signModal.hide();
+        });
+
+        // Close Button (Reset or Keep?)
+        // If they click 'X', we just close. If they confirmed before, old sig remains.
+        btnCloseSign.addEventListener('click', function () {
+            signModal.hide();
+        });
+
+        // --- Restored Calendar Logic ---
         var calendar = null;
         var currentMode = getMode(); // 'mobile' or 'pc'
 
         function getMode() {
-            // Check orientation and width
             const isLandscape = window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches;
             if (isLandscape) return 'landscape';
             return window.innerWidth < 768 ? 'mobile' : 'pc';
@@ -272,15 +530,12 @@
             calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
                 locale: 'ko',
-                // Mobile: 'auto' height for natural flow. PC: Fixed height to 70vh to fit chrome/taskbar.
                 height: isMobile ? 'auto' : '70vh',
-                // Mobile: 1.2 (Taller, easy to tap), PC: 2.2 (Wide/Short to fit 1080p)
                 aspectRatio: isMobile ? 1.2 : 2.2,
-
                 headerToolbar: {
                     left: 'prev,next',
                     center: 'title',
-                    right: 'dayGridMonth,listMonth today' // Restored buttons
+                    right: 'dayGridMonth,listMonth today'
                 },
                 buttonText: {
                     listMonth: '목록',
@@ -288,34 +543,20 @@
                     today: '오늘'
                 },
                 selectable: true,
-                // Disable 'more' popover in landscape/mobile to force showing event
                 dayMaxEvents: isLandscape ? false : true,
                 events: '/api/reservations',
                 eventTimeFormat: { hour: '2-digit', minute: '2-digit', meridiem: false, hour12: false },
-
-                // Conditional Rendering based on Mode
                 eventContent: isMobile ? function (arg) {
-                    // Mobile List View: Show default (Time + Name)
-                    if (arg.view.type === 'listMonth') {
-                        return undefined;
-                    }
-
-                    // Special Handling for Blocked Events
+                    if (arg.view.type === 'listMonth') return undefined;
                     if (arg.event.title.startsWith('⛔')) {
-                        return {
-                            html: `<div class="text-center fw-bold text-truncate" style="font-size:0.7rem; color:white;">${arg.event.title}</div>`
-                        };
+                        return { html: `<div class="text-center fw-bold text-truncate" style="font-size:0.7rem; color:white;">${arg.event.title}</div>` };
                     }
-
-                    // Standard User Reservation: Show "예약" text only on mobile grid
                     return { html: '<div class="text-center fw-bold" style="font-size:0.75rem;">예약</div>' };
                 } : undefined,
-
                 dayCellContent: function (info) {
                     var number = info.dayNumberText.replace('일', '');
                     return { html: number };
                 },
-
                 dateClick: function (info) {
                     selectedDate = info.dateStr;
                     openReserveModal(selectedDate);
@@ -331,7 +572,6 @@
 
         initCalendar();
 
-        // Listen for resize to switch modes dynamically
         window.addEventListener('resize', function () {
             var newMode = getMode();
             if (newMode !== currentMode) {
@@ -340,7 +580,6 @@
         });
 
         function openReserveModal(dateStr) {
-            // Validate Past Date
             const selected = new Date(dateStr);
             const today = new Date();
             today.setHours(0, 0, 0, 0);
@@ -354,7 +593,7 @@
             const items = dateStr.split('-');
             document.getElementById('displayDate').innerText = `${items[0]}년 ${items[1]}월 ${items[2]}일`;
             reserveModal.show();
-            refreshCaptcha();
+
         }
 
         // Submit Logic
@@ -365,14 +604,20 @@
             const purpose = document.getElementById('resPurpose').value;
             const startTime = document.getElementById('resStartTime').value;
             const endTime = document.getElementById('resEndTime').value;
-            const userCaptcha = parseInt(document.getElementById('captchaAnswer').value);
+
             const agreed = document.getElementById('agreeTerms').checked;
 
             if (!name || !phone || !password || !purpose) { showAlert('필수 정보를 모두 입력해주세요.'); return; }
             if (password.length !== 4 || isNaN(password)) { showAlert('비밀번호는 숫자 4자리여야 합니다.'); return; }
             if (startTime >= endTime) { showAlert('종료 시간은 시작 시간보다 뒤여야 합니다.'); return; }
             if (!agreed) { showAlert('약관에 동의해주세요.'); return; }
-            if (userCaptcha !== captchaAns) { showAlert('자동 예약 방지 정답이 틀렸습니다.'); return; }
+
+
+            // Signature Validation (Updated)
+            if (!finalSignatureData) {
+                showAlert('전자 서명이 필요합니다. 서명하기 버튼을 눌러주세요.');
+                return;
+            }
 
             // Save Info
             if (document.getElementById('rememberMe').checked) {
@@ -384,13 +629,17 @@
                 localStorage.removeItem('rememberMe');
             }
 
+            // Use Confirmed Signature Data
+            const signatureData = finalSignatureData;
+
             const payload = {
                 name: name,
                 phone: phone,
                 password: password,
                 purpose: purpose,
                 start: `${selectedDate}T${startTime}:00`,
-                end: `${selectedDate}T${endTime}:00`
+                end: `${selectedDate}T${endTime}:00`,
+                signature: signatureData
             };
 
             fetch('/api/reservations', {
@@ -403,6 +652,15 @@
                     if (res.status === 201) {
                         reserveModal.hide();
                         calendar.refetchEvents();
+
+                        // Reset Form & Signature
+                        document.getElementById('reservationForm').reset();
+                        finalSignatureData = null;
+                        document.getElementById('sigImage').src = "";
+                        document.getElementById('signaturePreview').style.display = 'none';
+                        btnOpenSign.innerHTML = '<i class="fas fa-signature me-2"></i>서명하기 (터치)';
+                        btnOpenSign.classList.remove('btn-outline-secondary');
+                        btnOpenSign.classList.add('btn-outline-dark');
 
                         const downloadBtn = document.getElementById('btnDownloadIcs');
                         downloadBtn.href = `/api/reservations/${res.body.id}/download_ics`;

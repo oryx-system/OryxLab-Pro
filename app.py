@@ -14,11 +14,14 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
+from reportlab.lib.utils import ImageReader # Added for blob image support
 
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
+import base64
+import binascii
 
 load_dotenv()
 
@@ -108,6 +111,8 @@ class Reservation(db.Model):
     purpose = db.Column(db.String(200), nullable=True)
     status = db.Column(db.String(20), default='reserved') # reserved, checked_in, ended, cancelled, noshow_penalty
     admin_memo = db.Column(db.Text, nullable=True) # New Field
+    signature_path = db.Column(db.String(255), nullable=True) # Legacy (File Path)
+    signature_blob = db.Column(db.LargeBinary, nullable=True) # New (Database Storage)
     checkout_photo = db.Column(db.String(255), nullable=True) # New: Cleaning photo
     created_at = db.Column(db.DateTime, default=datetime.now)
 
@@ -475,13 +480,25 @@ def create_reservation():
     if total_minutes + new_duration > 240:
         return jsonify({'error': '하루 최대 4시간까지만 이용 가능합니다.'}), 400
 
+    # 4. Save Signature Image (DB Blob)
+    sig_blob = None
+    if 'signature' in data and data['signature']:
+        try:
+             # Format: "data:image/png;base64,iVBOR..."
+             header, encoded = data['signature'].split(',', 1)
+             img_data = base64.b64decode(encoded)
+             sig_blob = img_data
+        except Exception as e:
+             print(f"Signature Decode Error: {e}")
+
     new_res = Reservation(
         name=name.strip(),
         phone=phone.strip(),
         password=password.strip(),
         purpose=purpose.strip(),
         start_time=start_time,
-        end_time=end_time
+        end_time=end_time,
+        signature_blob=sig_blob
     )
     db.session.add(new_res)
     db.session.commit()
@@ -774,7 +791,13 @@ def _draw_application_form(c, res, width, height):
 
     y = draw_row("예약 번호", str(res.id), y)
     y = draw_row("성       명", res.name, y)
-    y = draw_row("전화번호", res.phone, y)
+    
+    # Format Phone Number (010-xxxx-xxxx)
+    p_str = res.phone
+    if len(p_str) == 11 and p_str.startswith('010'):
+         p_str = f"{p_str[:3]}-{p_str[3:7]}-{p_str[7:]}"
+         
+    y = draw_row("전화번호", p_str, y)
     y = draw_row("사용 일자", res.start_time.strftime('%Y년 %m월 %d일'), y)
     y = draw_row("사용 시간", f"{res.start_time.strftime('%H:%M')} ~ {res.end_time.strftime('%H:%M')}", y)
     y = draw_row("사용 목적", res.purpose, y)
@@ -792,7 +815,66 @@ def _draw_application_form(c, res, width, height):
     c.drawCentredString(width/2, y, datetime.now().strftime('%Y년 %m월 %d일'))
     
     y -= 20*mm
-    c.drawCentredString(width/2, y, f"신청인 :  {res.name}   (인)")
+    
+    # Text Components
+    name_str = f"신청인 :  {res.name}"
+    seal_str = "(인)"
+    
+    # Calculate widths for centering
+    c.setFont('Malgun', 14)
+    name_w = c.stringWidth(name_str)
+    
+    c.setFont('Malgun', 10) # Smaller as requested
+    seal_w = c.stringWidth(seal_str)
+    
+    spacing = 10*mm # Space between name and (in)
+    total_w = name_w + spacing + seal_w
+    
+    # Starting X to center the whole block
+    start_x = (width - total_w) / 2
+    
+    # 1. Draw Name (Black)
+    c.setFillColorRGB(0, 0, 0)
+    c.setFont('Malgun', 14)
+    c.drawString(start_x, y, name_str)
+    
+    # 2. Draw (in) (Gray)
+    seal_x = start_x + name_w + spacing
+    c.setFillColorRGB(0.7, 0.7, 0.7) # Light Gray
+    c.setFont('Malgun', 10)
+    # Adjust y slightly if needed for baseline alignment, but same y is usually fine for 14 vs 10
+    c.drawString(seal_x, y, seal_str)
+    
+    # Reset color
+    c.setFillColorRGB(0, 0, 0)
+    
+    # 3. Draw Signature Image
+    # Priority: Blob -> Path -> None
+    sig_img_reader = None
+    
+    if res.signature_blob:
+        try:
+            sig_img_reader = ImageReader(io.BytesIO(res.signature_blob))
+        except:
+            pass
+    elif res.signature_path:
+        sig_full_path = os.path.join(instance_path, 'signatures', res.signature_path)
+        if os.path.exists(sig_full_path):
+            sig_img_reader = sig_full_path # Filename is also valid for drawImage
+            
+    if sig_img_reader:
+        # Target Center: Center of "(in)" text
+        center_x = seal_x + (seal_w / 2)
+        center_y = y + 1.5*mm 
+        
+        # Size: ~30.25 x 14.52 (Approx using aspect ratio)
+        sig_w = 30.25 * mm
+        sig_h = 14.52 * mm
+        
+        try:
+            c.drawImage(sig_img_reader, center_x - (sig_w/2), center_y - (sig_h/2), width=sig_w, height=sig_h, mask='auto', preserveAspectRatio=True)
+        except Exception as e:
+            print(f"PDF Signature Draw Error: {e}")
 
 def _generate_pdf_buffer(res):
     # 1. Register Font
@@ -1333,6 +1415,45 @@ def delete_reservation_dev(id):
     except Exception as e:
         db.session.rollback()
         # The global error handler will catch this and log it to ErrorLog
+        raise e
+
+@app.route('/dev/reservations/delete_bulk', methods=['POST'])
+def delete_bulk_reservations():
+    if not session.get('is_dev'): return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.json
+    mode = data.get('mode') # 'all' or 'selected'
+    
+    try:
+        count = 0
+        if mode == 'all':
+            # Delete All
+            count = Reservation.query.delete()
+            action_msg = f"Bulk Deleted ALL Data ({count} records)"
+        elif mode == 'selected':
+            ids = data.get('ids', [])
+            if not ids:
+                return jsonify({'error': 'No items selected'}), 400
+            
+            # Delete Selected
+            count = Reservation.query.filter(Reservation.id.in_(ids)).delete(synchronize_session=False)
+            action_msg = f"Bulk Deleted {count} records (IDs: {ids})"
+        else:
+             return jsonify({'error': 'Invalid mode'}), 400
+             
+        # Log Action
+        log = AdminLog(
+            admin_type='dev',
+            action=action_msg,
+            ip_address=request.remote_addr
+        )
+        db.session.add(log)
+        db.session.commit()
+        
+        return jsonify({'success': True, 'count': count})
+        
+    except Exception as e:
+        db.session.rollback()
         raise e
 
 @app.route('/dev/download_logs')

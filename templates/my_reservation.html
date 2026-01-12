@@ -14,7 +14,7 @@
                 <h5 class="card-title fw-bold mb-3 text-center">본인 인증</h5>
                 <p class="text-muted text-center mb-4">예약 시 입력한 전화번호로 예약 내역을 조회합니다.</p>
                 <div class="form-floating mb-3">
-                    <input type="tel" id="myPhone" class="form-control" placeholder="010-1234-5678">
+                    <input type="tel" id="myPhone" class="form-control" placeholder="01012345678">
                     <label for="myPhone">전화번호</label>
                 </div>
                 <div class="form-floating mb-3">
@@ -150,10 +150,13 @@
         }
     });
 
-    // Load saved phone if exists
+    // Load saved info if exists
     if (localStorage.getItem('myPhone')) {
         document.getElementById('myPhone').value = localStorage.getItem('myPhone');
         document.getElementById('rememberMe').checked = true;
+    }
+    if (localStorage.getItem('myPassword')) {
+        document.getElementById('myPassword').value = localStorage.getItem('myPassword');
     }
 
     document.getElementById('btnLookUp').addEventListener('click', loadHistory);
@@ -170,8 +173,10 @@
         // Save to local storage if checked
         if (document.getElementById('rememberMe').checked) {
             localStorage.setItem('myPhone', phone);
+            localStorage.setItem('myPassword', password);
         } else {
             localStorage.removeItem('myPhone');
+            localStorage.removeItem('myPassword');
         }
 
         const btn = document.getElementById('btnLookUp');
@@ -356,7 +361,7 @@
                     <div class="d-flex align-items-center text-muted small mb-3">
                         <i class="fas fa-book-open me-2" style="width: 20px; text-align: center;"></i> ${item.purpose || '목적 미기입'}
                     </div>
-                    <div class="d-flex gap-2 mb-3">
+                    <div class="d-flex flex-column flex-sm-row gap-2 mb-3">
                         <button class="btn btn-sm btn-outline-primary flex-grow-1" onclick="previewPdf('${item.id}')">
                             <i class="fas fa-file-pdf me-1"></i>신청서 미리보기
                         </button>

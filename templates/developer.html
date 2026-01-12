@@ -248,14 +248,25 @@
     <!-- Raw Data -->
     <div class="tab-pane fade" id="raw-data" role="tabpanel">
         <div class="card shadow border-0">
-            <div class="card-header bg-white">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
                 <h6 class="fw-bold mb-0">예약 데이터 (원본 조회)</h6>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-danger" id="btnDeleteSelected">
+                        <i class="fas fa-check-square me-1"></i>선택 삭제
+                    </button>
+                    <button class="btn btn-sm btn-danger" id="btnDeleteAll">
+                        <i class="fas fa-trash-alt me-1"></i>전체 삭제
+                    </button>
+                </div>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive" style="max-height: 600px;">
                     <table class="table table-sm table-bordered mb-0 small">
                         <thead class="table-light sticky-top">
                             <tr>
+                                <th class="text-center" style="width: 40px;">
+                                    <input type="checkbox" class="form-check-input" id="checkAllRes">
+                                </th>
                                 <th>ID</th>
                                 <th>상태</th>
                                 <th>시작시간</th>
@@ -270,6 +281,9 @@
                         <tbody>
                             {% for r in reservations %}
                             <tr>
+                                <td class="text-center">
+                                    <input type="checkbox" class="form-check-input check-res" value="{{ r.id }}">
+                                </td>
                                 <td>{{ r.id }}</td>
                                 <td>
                                     {% if status_map %}
@@ -417,5 +431,72 @@
             })
             .catch(err => showAlert('서버 통신 오류'));
     });
+
+    // --- Bulk Delete Logic ---
+    const checkAll = document.getElementById('checkAllRes');
+    const btnDelSelected = document.getElementById('btnDeleteSelected');
+    const btnDelAll = document.getElementById('btnDeleteAll');
+
+    // Select All Toggle
+    if (checkAll) {
+        checkAll.addEventListener('change', function () {
+            const checkboxes = document.querySelectorAll('.check-res');
+            checkboxes.forEach(cb => cb.checked = this.checked);
+        });
+    }
+
+    // Delete Selected
+    if (btnDelSelected) {
+        btnDelSelected.addEventListener('click', function () {
+            const checked = document.querySelectorAll('.check-res:checked');
+            if (checked.length === 0) {
+                showAlert('삭제할 항목을 선택해주세요.');
+                return;
+            }
+
+            if (!confirm(`선택한 ${checked.length}개의 예약을 삭제하시겠습니까?\n복구할 수 없습니다.`)) return;
+
+            const ids = Array.from(checked).map(cb => parseInt(cb.value));
+
+            fetch('/dev/reservations/delete_bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'selected', ids: ids })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert(`${data.count}건 삭제 완료.`, () => location.reload());
+                    } else {
+                        showAlert('삭제 실패: ' + data.error);
+                    }
+                })
+                .catch(err => showAlert('서버 통신 오류'));
+        });
+    }
+
+    // Delete All
+    if (btnDelAll) {
+        btnDelAll.addEventListener('click', function () {
+            if (!confirm('경고: 모든 예약 데이터를 영구 삭제하시겠습니까?\n이 작업은 절대 되돌릴 수 없습니다!')) return;
+            // Double Check
+            if (!confirm('정말 모든 데이터를 초기화하시겠습니까? (최종 확인)')) return;
+
+            fetch('/dev/reservations/delete_bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ mode: 'all' })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('모든 데이터가 삭제되었습니다.', () => location.reload());
+                    } else {
+                        showAlert('삭제 실패: ' + data.error);
+                    }
+                })
+                .catch(err => showAlert('서버 통신 오류'));
+        });
+    }
 </script>
 {% endblock %}

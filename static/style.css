@@ -215,6 +215,12 @@ h6 {
     border: none;
 }
 
+/* Highlight Today (Clearer) */
+.fc-day-today {
+    background-color: rgba(0, 191, 165, 0.15) !important;
+    font-weight: bold;
+}
+
 .fc-theme-standard td,
 .fc-theme-standard th {
     border-color: rgba(0, 0, 0, 0.05);
@@ -354,46 +360,145 @@ h6 {
     }
 }
 
-/* --- Mobile Portrait Refinement --- */
+/* --- Mobile Portrait Refinement (Enhanced) --- */
 @media (max-width: 768px) {
 
-    /* Existing overrides + enhancements */
+    /* 1. Global Layout & Spacing */
     .container {
-        padding-left: 15px;
-        padding-right: 15px;
+        padding-left: 12px;
+        padding-right: 12px;
     }
 
-    /* Better Modal on Mobile */
+    .container.py-4.mt-5 {
+        margin-top: 3.5rem !important;
+        /* Navbar height */
+        padding-top: 0.5rem !important;
+        padding-bottom: 2rem !important;
+    }
+
+    /* 2. Card Optimization */
+    .card-body {
+        padding: 1.25rem !important;
+        /* Reduce from p-5/p-4 */
+    }
+
+    .card .p-5 {
+        padding: 1.5rem !important;
+        /* Override explicit p-5 classes */
+    }
+
+    /* 3. Typography scaling */
+    h1 {
+        font-size: 1.75rem;
+    }
+
+    h2 {
+        font-size: 1.5rem;
+    }
+
+    h3 {
+        font-size: 1.3rem;
+    }
+
+    h4 {
+        font-size: 1.2rem;
+    }
+
+    h5 {
+        font-size: 1.1rem;
+    }
+
+    .fs-5 {
+        font-size: 1rem !important;
+    }
+
+    /* 4. Inputs & Buttons (Touch Targets) */
+    .btn,
+    .form-control,
+    .form-select,
+    .input-group-text {
+        min-height: 48px;
+        /* Slightly larger for thumb */
+        font-size: 1rem;
+    }
+
+    .btn-sm {
+        min-height: 36px;
+        font-size: 0.85rem;
+    }
+
+    /* 5. Components */
+    .notice-banner {
+        padding: 12px;
+        margin-bottom: 1rem !important;
+        flex-direction: row;
+        /* Keep row but tighter */
+    }
+
+    .notice-banner h5 {
+        font-size: 1rem;
+        margin-bottom: 0.2rem;
+    }
+
+    .notice-banner p {
+        font-size: 0.85rem;
+    }
+
+    /* 6. Calendar Toolbar Stacking */
+    .fc-toolbar {
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        gap: 0.5rem;
+    }
+
+    .fc-toolbar-chunk {
+        display: flex;
+        align-items: center;
+    }
+
+    /* Left Controls (Prev/Next) */
+    .fc-toolbar-chunk:nth-child(1) {
+        order: 2;
+        /* Place after Title */
+    }
+
+    /* Title (Center -> First) */
+    .fc-toolbar-chunk:nth-child(2) {
+        order: 1;
+        /* First */
+        margin-bottom: 0 !important;
+        width: auto !important;
+        /* Allow shrinking */
+    }
+
+    /* Right Controls (Views) -> New Line */
+    .fc-toolbar-chunk:nth-child(3) {
+        order: 3;
+        width: 100%;
+        justify-content: flex-end;
+        /* Align right on new line */
+        margin-top: 5px;
+    }
+
+    .fc-toolbar-title {
+        font-size: 1.3rem !important;
+    }
+
+    /* 7. Modal Full Widthish */
     .modal-dialog {
         margin: 0.5rem;
     }
 
-    /* Reduce Top Spacing on Mobile */
-    .container.py-4.mt-5 {
-        margin-top: 3.5rem !important;
-        /* Just enough for navbar */
-        padding-top: 1rem !important;
-        padding-bottom: 1rem !important;
+    /* 8. Table/List Adjustments */
+    .list-group-item {
+        padding: 0.75rem 1rem;
     }
 
-    .notice-banner {
-        margin-bottom: 1rem !important;
-        /* Reduce gap */
-        padding: 10px 15px;
-        font-size: 0.9rem;
-    }
-
-    /* Larger Touch Targets */
-    .btn,
-    .form-control,
-    .form-select {
-        min-height: 44px;
-        /* Apple Human Interface Guidelines recommended */
-    }
-
-    /* Notice Banner Compact */
-    .notice-banner {
-        padding: 10px 15px;
-        font-size: 0.9rem;
+    /* 9. Calendar Specific */
+    #calendar {
+        padding: 0.5rem !important;
+        /* Reduce from p-3 */
     }
 }
