@@ -330,3 +330,74 @@ h6 {
 .fc-event:hover {
     transform: scale(1.02);
 }
+
+
+/* --- Mobile Landscape Optimization (Smartphones) --- */
+@media screen and (max-height: 500px) and (orientation: landscape) {
+    .container.py-5.mt-5 {
+        padding-top: 1rem !important;
+        margin-top: 3.5rem !important; /* Adjust for navbar */
+        padding-bottom: 1rem !important;
+    }
+    
+    .navbar-glass {
+        padding-top: 0.2rem;
+        padding-bottom: 0.2rem;
+    }
+    
+    /* Hide floating notice in landscape to save space */
+    .notice-banner {
+        display: none !important;
+    }
+    
+    /* Calendar Optimization for Landscape */
+    .fc-toolbar-title {
+        font-size: 1.2rem !important;
+    }
+    
+    .fc-header-toolbar {
+        margin-bottom: 0.5rem !important;
+    }
+    
+    .fc-daygrid-day-frame {
+        min-height: 40px !important; /* Compact height */
+    }
+    
+    .fc-daygrid-day-number {
+        font-size: 0.8rem;
+        padding: 2px !important;
+    }
+
+    footer {
+        display: none; /* Hide footer to maximize view */
+    }
+}
+
+/* --- Mobile Portrait Refinement --- */
+@media (max-width: 768px) {
+    /* Existing overrides + enhancements */
+    .container {
+        padding-left: 15px;
+        padding-right: 15px;
+    }
+
+    /* Better Modal on Mobile */
+    .modal-dialog {
+        margin: 0.5rem;
+    }
+    
+    .modal-content {
+        border-radius: 20px;
+    }
+    
+    /* Larger Touch Targets */
+    .btn, .form-control, .form-select {
+        min-height: 44px; /* Apple Human Interface Guidelines recommended */
+    }
+    
+    /* Notice Banner Compact */
+    .notice-banner {
+        padding: 10px 15px;
+        font-size: 0.9rem;
+    }
+}
