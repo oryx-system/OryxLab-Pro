@@ -9,6 +9,16 @@ import shutil
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont # Added for QR Poster
 import requests # Added for Telegram Notifications
+from reportlab.pdfgen import canvas
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib.pagesizes import A4
+from reportlab.lib.units import mm
+
+import smtplib
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from email.mime.application import MIMEApplication
 
 load_dotenv()
 
@@ -495,7 +505,7 @@ def submit_feedback():
     if not msg:
         return jsonify({'error': '내용을 입력해주세요.'}), 400
     
-    full_msg = f"[Feedback] {msg}"
+    full_msg = msg
     if contact:
         full_msg += f" (Contact: {contact})"
 
@@ -722,7 +732,348 @@ def backup_db():
     
     return send_file(db_path, as_attachment=True, download_name=f'library_backup_{datetime.now().strftime("%Y%m%d")}.sqlite')
 
-@app.route('/admin/download_excel')
+    # Headers for processing (though we use openpyxl manual write below)
+    
+    output = io.BytesIO()
+    
+    # Use openpyxl directly instead of pandas
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '예약내역'
+    # ... (rest of excel export) ...
+    # Wait, I am inserting BEFORE this or AFTER this? 
+    # I will insert the new route BEFORE download_excel for better organization, or after.
+    # Actually, let's insert it AFTER existing admin routes.
+    # The snippet in "TargetContent" needs to be precise.
+    # I will use appending to the end of admin routes section, e.g. before "download_excel" or after.
+    # Let's target the gap before download_excel.
+
+
+
+def _draw_application_form(c, res, width, height):
+    # Title
+    c.setFont('Malgun', 24)
+    c.drawCentredString(width/2, height - 30*mm, "지혜마루 작은 도서관")
+    c.setFont('Malgun', 36)
+    c.drawCentredString(width/2, height - 50*mm, "시설 사용 신청서")
+    
+    # Content
+    c.setFont('Malgun', 14)
+    y = height - 80*mm
+    line_height = 12*mm
+    
+    # Box Logic
+    margin_x = 30*mm
+    
+    def draw_row(label, value, y_pos):
+        c.setFont('Malgun', 14)
+        c.drawString(margin_x, y_pos, label)
+        c.drawString(margin_x + 40*mm, y_pos, f":  {value}")
+        c.line(margin_x, y_pos - 2*mm, width - margin_x, y_pos - 2*mm)
+        return y_pos - line_height
+
+    y = draw_row("예약 번호", str(res.id), y)
+    y = draw_row("성       명", res.name, y)
+    y = draw_row("전화번호", res.phone, y)
+    y = draw_row("사용 일자", res.start_time.strftime('%Y년 %m월 %d일'), y)
+    y = draw_row("사용 시간", f"{res.start_time.strftime('%H:%M')} ~ {res.end_time.strftime('%H:%M')}", y)
+    y = draw_row("사용 목적", res.purpose, y)
+    
+    # Agreement
+    y -= 20*mm
+    c.setFont('Malgun', 12)
+    c.drawString(margin_x, y, "본인은 위와 같이 지혜마루 작은 도서관 시설을 사용하고자 신청하며,")
+    y -= 8*mm
+    c.drawString(margin_x, y, "시설 이용 규정을 준수하고 발생되는 모든 문제에 대해 책임을 질 것을 확약합니다.")
+    
+    # Date & Signature
+    y -= 40*mm
+    c.setFont('Malgun', 14)
+    c.drawCentredString(width/2, y, datetime.now().strftime('%Y년 %m월 %d일'))
+    
+    y -= 20*mm
+    c.drawCentredString(width/2, y, f"신청인 :  {res.name}   (인)")
+
+def _generate_pdf_buffer(res):
+    # 1. Register Font
+    font_path = "C:/Windows/Fonts/malgun.ttf"
+    if not os.path.exists(font_path):
+         return None
+         
+    try:
+        pdfmetrics.registerFont(TTFont('Malgun', font_path))
+    except:
+        pass
+
+    # 2. Generate PDF
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    _draw_application_form(c, res, width, height)
+    c.save()
+    buffer.seek(0)
+    return buffer
+
+def _send_email_with_pdf(to_email, subject, body, pdf_buffer, filename):
+    smtp_host = get_setting('smtp_host')
+    smtp_port = get_setting('smtp_port') or 587
+    smtp_email = get_setting('smtp_email')
+    smtp_password = get_setting('smtp_password')
+    
+    if not smtp_host or not smtp_email or not smtp_password:
+        return False, "SMTP 설정이 누락되었습니다."
+        
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = smtp_email
+        msg['To'] = to_email
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+        
+        pdf_buffer.seek(0)
+        part = MIMEApplication(pdf_buffer.read(), Name=filename)
+        part['Content-Disposition'] = f'attachment; filename="{filename}"'
+        msg.attach(part)
+        
+        with smtplib.SMTP(smtp_host, int(smtp_port)) as server:
+            server.starttls()
+            server.login(smtp_email, smtp_password)
+            server.send_message(msg)
+            
+        return True, None
+    except Exception as e:
+        return False, str(e)
+
+
+@app.route('/admin/reservations/<int:id>/preview', methods=['POST'])
+def admin_preview_pdf(id):
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    res = Reservation.query.get_or_404(id)
+    buffer = _generate_pdf_buffer(res)
+    
+    if not buffer:
+        return jsonify({'error': 'PDF 생성 오류'}), 500
+        
+    return send_file(
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=False,
+        download_name=f'application_{id}.pdf'
+    )
+
+@app.route('/admin/reservations/<int:id>/send_official', methods=['POST'])
+def send_official_pdf(id):
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    # Get official email
+    official_email = get_setting('official_email')
+    if not official_email:
+         return jsonify({'error': '담당자 이메일이 설정되지 않았습니다.'}), 400
+
+    res = Reservation.query.get_or_404(id)
+    buffer = _generate_pdf_buffer(res)
+    
+    if not buffer:
+        return jsonify({'error': 'PDF 생성 실패'}), 500
+    
+    # Send Email
+    subject = f"[지혜마루] 시설 사용 신청서 - {res.name}"
+    body = f"""안녕하세요.
+지혜마루 작은도서관입니다.
+
+신청인: {res.name}
+사용일: {res.start_time.strftime('%Y-%m-%d')}
+사용시간: {res.start_time.strftime('%H:%M')} ~ {res.end_time.strftime('%H:%M')}
+
+붙임의 신청서를 확인해주시기 바랍니다.
+감사합니다."""
+    filename = f"신청서_{res.name}_{res.start_time.strftime('%Y%m%d')}.pdf"
+
+    success, error = _send_email_with_pdf(official_email, subject, body, buffer, filename)
+    
+    if success:
+        log_admin_action('admin', f'Sent Official Email for Reservation {id}')
+        return jsonify({'success': True})
+    else:
+        return jsonify({'error': f"메일 전송 실패: {error}"}), 500
+
+@app.route('/admin/stats/report', methods=['POST'])
+def send_bulk_report():
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    period = request.json.get('period', 'week') # week, half, month
+    official_email = get_setting('official_email')
+    
+    if not official_email:
+        return jsonify({'error': '담당자 이메일이 설정되지 않았습니다.'}), 400
+        
+    # Date Calculation
+    today = datetime.now()
+    if period == 'week':
+        # Last 7 days
+        start_date = today - timedelta(days=7)
+        title_suffix = "주간"
+    elif period == 'half':
+        # Last 15 days
+        start_date = today - timedelta(days=15)
+        title_suffix = "보름"
+    elif period == 'month':
+        start_date = today - timedelta(days=30)
+        title_suffix = "월간"
+    else:
+        return jsonify({'error': 'Invalid period'}), 400
+        
+    # Fetch Reservations
+    reservations = Reservation.query.filter(
+        Reservation.start_time >= start_date,
+        Reservation.status.in_(['reserved', 'checked_in', 'ended'])
+    ).order_by(Reservation.start_time).all()
+    
+    if not reservations:
+        return jsonify({'error': '해당 기간에 예약이 없습니다.'}), 404
+        
+    # Generate Merged PDF
+    font_path = "C:/Windows/Fonts/malgun.ttf"
+    if not os.path.exists(font_path):
+         return jsonify({'error': '폰트 없음'}), 500
+         
+    try:
+        pdfmetrics.registerFont(TTFont('Malgun', font_path))
+    except:
+        pass
+        
+    buffer = io.BytesIO()
+    c = canvas.Canvas(buffer, pagesize=A4)
+    width, height = A4
+    
+    for res in reservations:
+        _draw_application_form(c, res, width, height)
+        c.showPage() # New Page
+        
+    c.save()
+    buffer.seek(0)
+    
+    # Send Email
+    subject = f"[지혜마루] 시설 사용 신청서 모음 ({title_suffix})"
+    body = f"""안녕하세요.
+지혜마루 작은도서관입니다.
+
+{title_suffix} 시설 사용 신청서 모음을 송부드립니다.
+기간: {start_date.strftime('%Y-%m-%d')} ~ {today.strftime('%Y-%m-%d')}
+총 건수: {len(reservations)}건
+
+감사합니다."""
+    filename = f"지혜마루_{title_suffix}_예약모음_{today.strftime('%Y%m%d')}.pdf"
+
+    success, error = _send_email_with_pdf(official_email, subject, body, buffer, filename)
+
+    if success:
+        log_admin_action('admin', f'Sent Bulk Report ({period}) - Email')
+        return jsonify({'success': True, 'count': len(reservations)})
+    else:
+        return jsonify({'error': f"메일 전송 실패: {error}"}), 500
+
+@app.route('/admin/reservations/<int:id>/send_pdf', methods=['POST'])
+def send_reservation_pdf(id):
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Unauthorized'}), 401
+
+    res = Reservation.query.get_or_404(id)
+    buffer = _generate_pdf_buffer(res)
+    
+    if not buffer:
+        return jsonify({'error': 'PDF 생성 실패 (폰트 없음)'}), 500
+    
+    # 3. Send to Telegram
+    token = get_setting('telegram_token')
+    chat_id = get_setting('telegram_chat_id')
+    
+    if not token or not chat_id:
+        return jsonify({'error': '텔레그램 설정이 되어있지 않습니다.'}), 400
+        
+    url = f"https://api.telegram.org/bot{token}/sendDocument"
+    files = {
+        'document': (f'신청서_{res.name}_{res.start_time.strftime("%Y%m%d")}.pdf', buffer, 'application/pdf')
+    }
+    data = {'chat_id': chat_id, 'caption': f"📄 시설 사용 신청서 ({res.name})"}
+    
+    try:
+        r = requests.post(url, data=data, files=files, timeout=10)
+        if r.status_code == 200:
+            log_admin_action('admin', f'Sent PDF for Reservation {id}')
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': f"전송 실패: {r.text}"}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/reservations/<int:id>/preview_pdf', methods=['POST'])
+def preview_pdf(id):
+    data = request.json
+    phone = data.get('phone')
+    password = data.get('password')
+    
+    res = Reservation.query.get_or_404(id)
+    
+    # Verify Owner
+    if res.phone != phone or res.password != password:
+        return jsonify({'error': '권한이 없습니다 (정보 불일치)'}), 403
+        
+    buffer = _generate_pdf_buffer(res)
+    if not buffer:
+        return jsonify({'error': 'PDF 생성 오류'}), 500
+        
+    return send_file(
+        buffer,
+        mimetype='application/pdf',
+        as_attachment=False, # Preview in browser
+        download_name=f'application_{id}.pdf'
+    )
+
+@app.route('/api/reservations/<int:id>/send_to_admin', methods=['POST'])
+def user_send_pdf_to_admin(id):
+    data = request.json
+    phone = data.get('phone')
+    password = data.get('password')
+    
+    res = Reservation.query.get_or_404(id)
+    
+    # Verify Owner
+    if res.phone != phone or res.password != password:
+        return jsonify({'error': '권한이 없습니다 (정보 불일치)'}), 403
+        
+    buffer = _generate_pdf_buffer(res)
+    if not buffer:
+         return jsonify({'error': 'PDF 생성 오류'}), 500
+
+    token = get_setting('telegram_token')
+    chat_id = get_setting('telegram_chat_id')
+    
+    if not token or not chat_id:
+        return jsonify({'error': '관리자 알림 설정이 되어있지 않습니다.'}), 400
+        
+    url = f"https://api.telegram.org/bot{token}/sendDocument"
+    files = {
+        'document': (f'신청서_{res.name}_{res.start_time.strftime("%Y%m%d")}.pdf', buffer, 'application/pdf')
+    }
+    
+    # Diff caption to indicate user sent it
+    data = {'chat_id': chat_id, 'caption': f"📩 [사용자 제출] 시설 사용 신청서 ({res.name})"}
+    
+    try:
+        r = requests.post(url, data=data, files=files, timeout=10)
+        if r.status_code == 200:
+            return jsonify({'success': True})
+        else:
+            return jsonify({'error': f"전송 실패: {r.text}"}), 500
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 def download_excel():
     if not session.get('is_admin'):
         return redirect(url_for('login'))
@@ -879,6 +1230,7 @@ def developer_page():
     access_logs = AccessLog.query.order_by(AccessLog.timestamp.desc()).limit(100).all()
     admin_logs = AdminLog.query.order_by(AdminLog.timestamp.desc()).limit(100).all()
     error_logs = ErrorLog.query.order_by(ErrorLog.timestamp.desc()).limit(50).all()
+    feedback_logs = AdminLog.query.filter_by(admin_type='feedback').order_by(AdminLog.timestamp.desc()).all()
     
     maintenance_mode = get_setting('maintenance_mode') == 'true'
 
@@ -886,7 +1238,11 @@ def developer_page():
     settings = {
         'notice_text': get_setting('notice_text'),
         'wifi_info': get_setting('wifi_info'),
-        'door_pw': get_setting('door_pw')
+        'door_pw': get_setting('door_pw'),
+        'official_email': get_setting('official_email'),
+        'smtp_host': get_setting('smtp_host'),
+        'smtp_port': get_setting('smtp_port'),
+        'smtp_email': get_setting('smtp_email')
     }
 
     # Status Map
@@ -903,6 +1259,7 @@ def developer_page():
                            access_logs=access_logs, 
                            admin_logs=admin_logs,
                            error_logs=error_logs,
+                           feedback_logs=feedback_logs,
                            settings=settings,
                            maintenance_mode=maintenance_mode,
                            status_map=status_map)

@@ -283,6 +283,32 @@ h6 {
     transform: scale(1.02);
 }
 
+/* Remove colored dot in List View */
+.fc-list-event-dot {
+    display: none !important;
+}
+
+/* Force Reset List View Styles (Nuclear Option) */
+.fc-list-table .fc-list-event,
+.fc-list-table .fc-list-event td,
+.fc-list-table .fc-list-event:hover td {
+    background-color: transparent !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    color: #2c3e50 !important;
+}
+
+/* Add a subtle hover only */
+.fc-list-table .fc-list-event:hover td {
+    background-color: rgba(0, 0, 0, 0.03) !important;
+}
+
+/* Ensure the dot is definitely gone */
+.fc-list-event-graphic {
+    display: none !important;
+}
+
 
 /* --- Mobile Landscape Optimization (Smartphones) --- */
 @media screen and (max-height: 500px) and (orientation: landscape) {

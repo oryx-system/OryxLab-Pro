@@ -10,3 +10,4 @@ qrcode[pil]
 python-dotenv
 
 requests
+reportlab

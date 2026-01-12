@@ -356,6 +356,14 @@
                     <div class="d-flex align-items-center text-muted small mb-3">
                         <i class="fas fa-book-open me-2" style="width: 20px; text-align: center;"></i> ${item.purpose || '목적 미기입'}
                     </div>
+                    <div class="d-flex gap-2 mb-3">
+                        <button class="btn btn-sm btn-outline-primary flex-grow-1" onclick="previewPdf('${item.id}')">
+                            <i class="fas fa-file-pdf me-1"></i>신청서 미리보기
+                        </button>
+                        <button class="btn btn-sm btn-outline-dark flex-grow-1" onclick="sendPdfToAdmin('${item.id}')">
+                            <i class="fas fa-paper-plane me-1"></i>관리자에게 제출
+                        </button>
+                    </div>
                     <div class="text-end border-top pt-3">
                         ${btnHtml}
                     </div>
@@ -363,6 +371,49 @@
             `;
             container.appendChild(card);
         });
+    }
+
+    // PDF Functions
+    function previewPdf(id) {
+        const phone = document.getElementById('myPhone').value;
+        const password = document.getElementById('myPassword').value;
+
+        fetch(`/api/reservations/${id}/preview_pdf`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: phone, password: password })
+        })
+            .then(res => {
+                if (res.ok) return res.blob();
+                return res.json().then(err => { throw new Error(err.error); });
+            })
+            .then(blob => {
+                const url = window.URL.createObjectURL(blob);
+                window.open(url, '_blank');
+            })
+            .catch(err => showAlert('오류: ' + err.message));
+    }
+
+    function sendPdfToAdmin(id) {
+        if (!confirm('시설 사용 신청서를 관리자에게 제출하시겠습니까?')) return;
+
+        const phone = document.getElementById('myPhone').value;
+        const password = document.getElementById('myPassword').value;
+
+        fetch(`/api/reservations/${id}/send_to_admin`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: phone, password: password })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('신청서가 관리자에게 제출되었습니다.');
+                } else {
+                    showAlert('제출 실패: ' + data.error);
+                }
+            })
+            .catch(err => showAlert('서버 통신 오류'));
     }
 
     // Event Delegation for Cancel Button
@@ -448,7 +499,7 @@
                         try { cancelModal.hide(); } catch (e) { }
                     }
                     showAlert('취소되었습니다.', function () {
-                        location.reload();
+                        loadHistory();
                     });
                 } else {
                     showAlert('오류: ' + data.error);
