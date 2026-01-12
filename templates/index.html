@@ -170,23 +170,6 @@
 </div>
 </div>
 
-<!-- Warning Modal -->
-<div class="modal fade" id="warningModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0">
-            <div class="modal-header bg-warning text-dark border-0">
-                <h5 class="modal-title fw-bold"><i class="fas fa-exclamation-triangle me-2"></i>알림</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-4 text-center">
-                <p class="fs-5 mb-0" id="warningMsg">지난 날짜는 예약할 수 없습니다.</p>
-            </div>
-            <div class="modal-footer border-0 p-3 pt-0 justify-content-center">
-                <button type="button" class="btn btn-dark rounded-pill px-4" data-bs-dismiss="modal">확인</button>
-            </div>
-        </div>
-    </div>
-</div>
 
 {% endblock %}
 
@@ -196,7 +179,6 @@
         var calendarEl = document.getElementById('calendar');
         var reserveModal = new bootstrap.Modal(document.getElementById('reserveModal'));
         var successModal = new bootstrap.Modal(document.getElementById('successModal'));
-        var warningModal = new bootstrap.Modal(document.getElementById('warningModal'));
         let selectedDate = null;
 
         // Populate Time Dropdowns (09:00 to 22:00)
@@ -332,9 +314,7 @@
             today.setHours(0, 0, 0, 0);
 
             if (selected < today) {
-                // alert('지난 날짜는 예약할 수 없습니다.');
-                document.getElementById('warningMsg').innerText = '지난 날짜는 예약할 수 없습니다.';
-                warningModal.show();
+                showAlert('지난 날짜는 예약할 수 없습니다.');
                 return;
             }
 
@@ -355,11 +335,11 @@
             const userCaptcha = parseInt(document.getElementById('captchaAnswer').value);
             const agreed = document.getElementById('agreeTerms').checked;
 
-            if (!name || !phone || !password) { alert('필수 정보를 모두 입력해주세요.'); return; }
-            if (password.length !== 4 || isNaN(password)) { alert('비밀번호는 숫자 4자리여야 합니다.'); return; }
-            if (startTime >= endTime) { alert('종료 시간은 시작 시간보다 뒤여야 합니다.'); return; }
-            if (!agreed) { alert('약관에 동의해주세요.'); return; }
-            if (userCaptcha !== captchaAns) { alert('자동 예약 방지 정답이 틀렸습니다.'); return; }
+            if (!name || !phone || !password) { showAlert('필수 정보를 모두 입력해주세요.'); return; }
+            if (password.length !== 4 || isNaN(password)) { showAlert('비밀번호는 숫자 4자리여야 합니다.'); return; }
+            if (startTime >= endTime) { showAlert('종료 시간은 시작 시간보다 뒤여야 합니다.'); return; }
+            if (!agreed) { showAlert('약관에 동의해주세요.'); return; }
+            if (userCaptcha !== captchaAns) { showAlert('자동 예약 방지 정답이 틀렸습니다.'); return; }
 
             // Save Info
             if (document.getElementById('rememberMe').checked) {
@@ -395,12 +375,12 @@
 
                         successModal.show();
                     } else {
-                        alert('예약 실패: ' + res.body.error);
+                        showAlert('예약 실패: ' + res.body.error);
                     }
                 })
                 .catch(err => {
                     console.error(err);
-                    alert('서버 통신 오류');
+                    showAlert('서버 통신 오류');
                 });
         });
     });

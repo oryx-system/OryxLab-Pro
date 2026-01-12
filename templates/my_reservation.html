@@ -128,13 +128,13 @@
         const phone = document.getElementById('myPhone').value;
         const password = document.getElementById('myPassword').value;
 
-        if (!phone || !password) return alert('전화번호와 비밀번호를 모두 입력하세요');
+        if (!phone || !password) return showAlert('전화번호와 비밀번호를 모두 입력하세요');
 
         fetch(`/api/my_reservations?phone=${phone}&password=${password}`)
             .then(res => res.json())
             .then(data => {
                 if (data.error) {
-                    alert(data.error);
+                    showAlert(data.error);
                     return;
                 }
 
@@ -256,10 +256,11 @@
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    alert('취소되었습니다.');
-                    location.reload();
+                    showAlert('취소되었습니다.', function () {
+                        location.reload();
+                    });
                 } else {
-                    alert('오류: ' + data.error);
+                    showAlert('오류: ' + data.error);
                 }
             });
     });

@@ -23,7 +23,7 @@
 <script>
     document.getElementById('btnCheckin').addEventListener('click', function () {
         const phone = document.getElementById('checkinPhone').value;
-        if (!phone) return alert('전화번호를 입력해주세요.');
+        if (!phone) return showAlert('전화번호를 입력해주세요.');
 
         fetch('/api/checkin', {
             method: 'POST',
@@ -33,10 +33,11 @@
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    alert(`환영합니다, ${data.name}님! 입실 처리되었습니다.`);
-                    window.location.href = '/';
+                    showAlert(`환영합니다, ${data.name}님! 입실 처리되었습니다.`, function () {
+                        window.location.href = '/';
+                    });
                 } else {
-                    alert('체크인 실패: ' + data.error);
+                    showAlert('체크인 실패: ' + data.error);
                 }
             });
     });

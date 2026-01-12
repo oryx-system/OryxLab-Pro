@@ -165,7 +165,7 @@
         })
             .then(res => res.json())
             .then(data => {
-                if (data.success) alert('메모가 저장되었습니다.');
+                if (data.success) showAlert('메모가 저장되었습니다.');
             });
     }
 
@@ -182,7 +182,7 @@
         })
             .then(res => res.json())
             .then(data => {
-                if (data.success) alert('설정이 저장되었습니다.');
+                if (data.success) showAlert('설정이 저장되었습니다.');
             });
     });
 
@@ -197,8 +197,9 @@
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    alert('차단되었습니다.');
-                    location.reload();
+                    showAlert('차단되었습니다.', function () {
+                        location.reload();
+                    });
                 }
             });
     }
