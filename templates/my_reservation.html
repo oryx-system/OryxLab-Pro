@@ -22,6 +22,10 @@
                         pattern="[0-9]*" maxlength="4">
                     <label for="myPassword">예약 비밀번호 (숫자 4자리)</label>
                 </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="rememberMe" checked>
+                    <label class="form-check-label" for="rememberMe">내 정보 기억하기</label>
+                </div>
                 <div class="d-grid">
                     <button class="btn btn-primary btn-lg" id="btnLookUp">조회하기</button>
                 </div>
@@ -104,6 +108,14 @@
     let isPenalty = false;
 
     document.getElementById('btnLookUp').addEventListener('click', loadHistory);
+
+    // Load Remembered Info
+    if (localStorage.getItem('rememberMe') === 'true') {
+        document.getElementById('rememberMe').checked = true;
+        document.getElementById('myPhone').value = localStorage.getItem('userPhone') || '';
+        document.getElementById('myPassword').value = localStorage.getItem('userPassword') || '';
+    }
+
     document.getElementById('btnLogout').addEventListener('click', function () {
         document.getElementById('loginCard').style.display = 'block';
         document.getElementById('historySection').style.display = 'none';
@@ -125,6 +137,16 @@
                     alert(data.error);
                     return;
                 }
+
+                // Save Info
+                if (document.getElementById('rememberMe').checked) {
+                    localStorage.setItem('rememberMe', 'true');
+                    localStorage.setItem('userPhone', phone);
+                    localStorage.setItem('userPassword', password);
+                } else {
+                    localStorage.removeItem('rememberMe');
+                }
+
                 if (data.length > 0) {
                     document.getElementById('wifiInfo').innerText = data[0].wifi_info || '정보 없음';
                     document.getElementById('doorInfo').innerText = data[0].door_pw || '정보 없음';

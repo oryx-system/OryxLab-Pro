@@ -203,9 +203,7 @@
         document.getElementById('rememberMe').checked = true;
         document.getElementById('resName').value = localStorage.getItem('userName') || '';
         document.getElementById('resPhone').value = localStorage.getItem('userPhone') || '';
-        // Don't autofill password for security, or maybe user wants it? 
-        // Requests usually imply convenience. Let's NOT save password by default for security, 
-        // but the previous code saved address. I will skip saving Password to localStorage for safety.
+        document.getElementById('resPassword').value = localStorage.getItem('userPassword') || '';
 
         // CAPTCHA
         let captchaAns = 0;
@@ -346,6 +344,7 @@
                 localStorage.setItem('rememberMe', 'true');
                 localStorage.setItem('userName', name);
                 localStorage.setItem('userPhone', phone);
+                localStorage.setItem('userPassword', password);
             } else {
                 localStorage.removeItem('rememberMe');
             }
