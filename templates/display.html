@@ -1,0 +1,110 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Auto Refresh Meta -->
+<meta http-equiv="refresh" content="60">
+
+<div class="container-fluid mt-4">
+    <div class="row mb-4 text-center">
+        <h1 class="display-4 fw-bold">오늘의 예약 현황</h1>
+        <p class="text-muted" id="clock">Loading...</p>
+    </div>
+
+    <div class="row justify-content-center">
+        <div class="col-lg-8" id="displayList">
+            <!-- Items injected by JS -->
+            <div class="text-center py-5">
+                <div class="spinner-border text-primary" role="status"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<style>
+    /* Display Specific Styles */
+    .status-card {
+        font-size: 1.25rem;
+        border-left: 10px solid #ccc;
+    }
+
+    .status-reserved {
+        border-left-color: #0d6efd;
+    }
+
+    .status-checked-in {
+        border-left-color: #198754;
+        background-color: #e8f5e9;
+    }
+
+    .status-ended {
+        border-left-color: #6c757d;
+        opacity: 0.6;
+    }
+
+    .current-time {
+        font-size: 2rem;
+        font-weight: 300;
+    }
+</style>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Clock
+    function updateClock() {
+        const now = new Date();
+        document.getElementById('clock').innerText = now.toLocaleString('ko-KR', {
+            weekday: 'long', year: 'numeric', month: 'long', day: 'numeric',
+            hour: '2-digit', minute: '2-digit', second: '2-digit'
+        });
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    // Fetch Today's Data
+    fetch('/api/stats_today')
+        .then(res => res.json())
+        .then(data => {
+            const container = document.getElementById('displayList');
+            container.innerHTML = '';
+
+            if (data.length === 0) {
+                container.innerHTML = `
+                <div class="card p-5 text-center shadow-sm">
+                    <h3>오늘 예약이 없습니다.</h3>
+                    <p class="mb-0">자유롭게 이용 가능합니다.</p>
+                </div>`;
+                return;
+            }
+
+            data.forEach(item => {
+                let statusClass = 'status-reserved';
+                let statusText = '예약중';
+
+                if (item.status === 'checked_in') {
+                    statusClass = 'status-checked-in';
+                    statusText = '이용중';
+                } else if (item.status === 'ended') {
+                    statusClass = 'status-ended';
+                    statusText = '종료';
+                }
+
+                const card = document.createElement('div');
+                card.className = `card mb-3 shadow-sm status-card ${statusClass}`;
+                card.innerHTML = `
+                <div class="card-body d-flex justify-content-between align-items-center">
+                    <div>
+                        <h3 class="fw-bold mb-0">${item.start.substring(11, 16)} ~ ${item.end.substring(11, 16)}</h3>
+                        <div class="text-muted mt-1">${item.title}</div>
+                    </div>
+                    <div>
+                        <span class="badge rounded-pill bg-light text-dark border fs-5">${statusText}</span>
+                    </div>
+                </div>
+            `;
+                container.appendChild(card);
+            });
+        });
+</script>
+{% endblock %}

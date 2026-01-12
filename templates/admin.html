@@ -1,0 +1,206 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row align-items-center mb-4">
+    <div class="col">
+        <h2 class="fw-bold"><i class="fas fa-cogs me-2"></i>관리자 대시보드</h2>
+    </div>
+    <div class="col-auto">
+        <a href="/logout" class="btn btn-outline-danger">로그아웃</a>
+    </div>
+</div>
+
+<ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active fw-bold" id="reservations-tab" data-bs-toggle="tab"
+            data-bs-target="#reservations" type="button">예약 관리</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link fw-bold" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings"
+            type="button">환경 설정</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link fw-bold" id="backup-tab" data-bs-toggle="tab" data-bs-target="#backup" type="button">백업
+            및 관리</button>
+    </li>
+</ul>
+
+<div class="tab-content" id="adminTabsContent">
+    <!-- Reservations Tab -->
+    <div class="tab-pane fade show active" id="reservations" role="tabpanel">
+        <div class="card shadow">
+            <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <h5 class="mb-0 fw-bold">예약 목록</h5>
+                <a href="/admin/download_excel" class="btn btn-success btn-sm"><i class="fas fa-file-excel me-1"></i> 엑셀
+                    다운로드</a>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>상태</th>
+                                <th>시간</th>
+                                <th>예약자</th>
+                                <th>주소</th>
+                                <th>메모</th>
+                                <th>관리</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in reservations %}
+                            <tr>
+                                <td>
+                                    {% if r.status == 'reserved' %}<span class="badge bg-primary">예약중</span>
+                                    {% elif r.status == 'checked_in' %}<span class="badge bg-success">체크인</span>
+                                    {% elif r.status == 'ended' %}<span class="badge bg-secondary">종료</span>
+                                    {% elif r.status == 'cancelled' %}<span class="badge bg-warning text-dark">취소</span>
+                                    {% elif r.status == 'noshow_penalty' %}<span class="badge bg-danger">노쇼</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="fw-bold">{{ r.start_time.strftime('%Y-%m-%d') }}</div>
+                                    <small class="text-muted">{{ r.start_time.strftime('%H:%M') }} ~ {{
+                                        r.end_time.strftime('%H:%M') }}</small>
+                                </td>
+                                <td>
+                                    {{ r.name }}<br>
+                                    <small class="text-muted">{{ r.phone }}</small>
+                                </td>
+                                <td><small>{{ r.address }}</small></td>
+                                <td>
+                                    <div class="input-group input-group-sm" style="width: 200px;">
+                                        <input type="text" class="form-control memo-input"
+                                            value="{{ r.admin_memo or '' }}" id="memo-{{ r.id }}" placeholder="메모 입력">
+                                        <button class="btn btn-outline-secondary" onclick="saveMemo({{ r.id }})"><i
+                                                class="fas fa-save"></i></button>
+                                    </div>
+                                </td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger"
+                                        onclick="blockUser('{{ r.phone }}', '{{ r.name }}')">
+                                        차단
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Settings Tab -->
+    <div class="tab-pane fade" id="settings" role="tabpanel">
+        <div class="card shadow" style="max-width: 800px; margin: 0 auto;">
+            <div class="card-body p-4">
+                <h5 class="fw-bold mb-4">공지 및 시설 정보 설정</h5>
+                <form id="settingsForm">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">메인 화면 공지사항</label>
+                        <input type="text" class="form-control" id="setNotice" value="{{ settings.notice_text }}">
+                        <div class="form-text">메인 캘린더 상단에 표시됩니다.</div>
+                    </div>
+                    <hr>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Wi-Fi 정보</label>
+                        <input type="text" class="form-control" id="setWifi" value="{{ settings.wifi_info }}">
+                        <div class="form-text">예약자에게만 표시됩니다. (예: ID / PW)</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">출입문 비밀번호</label>
+                        <input type="text" class="form-control" id="setDoor" value="{{ settings.door_pw }}">
+                        <div class="form-text">예약자에게만 표시됩니다.</div>
+                    </div>
+                    <div class="d-grid mt-4">
+                        <button type="button" class="btn btn-primary btn-lg" id="btnSaveSettings">설정 저장</button>
+                    </div>
+                </form>
+
+                <hr class="my-5">
+
+                <h5 class="fw-bold mb-4">체크인용 OQ(QR) 코드</h5>
+                <div class="text-center bg-light p-4 rounded-3 border">
+                    <p class="mb-3 text-muted">이 코드를 인쇄하여 도서관 입구에 부착하세요.<br>이용자가 스캔하면 체크인 페이지로 이동합니다.</p>
+                    <div class="bg-white p-3 d-inline-block shadow-sm rounded mb-3">
+                        <img src="/admin/qr_code" alt="Check-in QR Code" class="img-fluid" style="max-width: 200px;">
+                    </div>
+                    <div>
+                        <a href="/admin/qr_code" download="checkin_qrcode.png" class="btn btn-outline-dark btn-sm">
+                            <i class="fas fa-download me-1"></i>이미지 다운로드
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Backup Tab -->
+    <div class="tab-pane fade" id="backup" role="tabpanel">
+        <div class="row justify-content-center">
+            <div class="col-md-6">
+                <div class="card shadow text-center p-5">
+                    <div class="mb-3">
+                        <i class="fas fa-database fa-4x text-primary"></i>
+                    </div>
+                    <h4 class="fw-bold">데이터베이스 백업</h4>
+                    <p class="text-muted mb-4">현재까지의 모든 예약 데이터와 설정을 파일로 안전하게 저장합니다.</p>
+                    <a href="/admin/backup" class="btn btn-dark btn-lg">
+                        <i class="fas fa-download me-2"></i>DB 파일 다운로드 (.sqlite)
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function saveMemo(id) {
+        const memo = document.getElementById(`memo-${id}`).value;
+        fetch(`/admin/memo/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ memo: memo })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) alert('메모가 저장되었습니다.');
+            });
+    }
+
+    document.getElementById('btnSaveSettings').addEventListener('click', function () {
+        const payload = {
+            notice_text: document.getElementById('setNotice').value,
+            wifi_info: document.getElementById('setWifi').value,
+            door_pw: document.getElementById('setDoor').value
+        };
+        fetch('/admin/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) alert('설정이 저장되었습니다.');
+            });
+    });
+
+    function blockUser(phone, name) {
+        if (!confirm(`정말 ${name}님을 30일간 차단하시겠습니까?`)) return;
+
+        fetch(`/admin/block/${phone}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: name })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('차단되었습니다.');
+                    location.reload();
+                }
+            });
+    }
+</script>
+{% endblock %}

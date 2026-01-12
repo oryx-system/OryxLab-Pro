@@ -1,0 +1,371 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Floating Notice Banner -->
+<div class="notice-banner">
+    <div class="d-flex align-items-center w-100">
+        <!-- Secret Admin Entrance: Click 5 times in 10s -->
+        <div id="noticeIcon" class="rounded-circle bg-primary bg-opacity-10 p-3 me-3 text-primary"
+            style="cursor: pointer; transition: transform 0.1s;">
+            <i class="fas fa-bullhorn fa-lg"></i>
+        </div>
+        <div>
+            <h5 class="mb-1 fw-bold">공지사항</h5>
+            <p class="mb-0 opacity-75">{{ notice }}</p>
+        </div>
+    </div>
+</div>
+
+<!-- ... (Rest of HTML) ... -->
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        // ... (Existing Code) ...
+
+        // Secret Admin Access: Click Notice Icon 5 times in 10 seconds
+        const noticeIcon = document.getElementById('noticeIcon');
+        let clickCount = 0;
+        let clickTimer = null;
+
+        noticeIcon.addEventListener('click', function () {
+            clickCount++;
+
+            // Visual Feedback
+            this.style.transform = 'scale(0.9)';
+            setTimeout(() => { this.style.transform = 'scale(1)'; }, 100);
+
+            if (clickCount === 1) {
+                // Start 10s timer on first click
+                clickTimer = setTimeout(() => {
+                    clickCount = 0; // Reset after 10s
+                }, 10000);
+            }
+
+            if (clickCount >= 5) {
+                clearTimeout(clickTimer);
+                clickCount = 0;
+                // Redirect to Admin
+                if (confirm('관리자 페이지로 이동하시겠습니까?')) {
+                    window.location.href = '/admin';
+                }
+            }
+        });
+
+        // ... (Rest of Scripts) ...
+    });
+</script>
+
+<div class="card p-4 border-0">
+    <div id='calendar'></div>
+</div>
+
+<!-- Premium Reservation Modal -->
+<div class="modal fade" id="reserveModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content overflow-hidden">
+            <div class="modal-header border-0 bg-primary bg-opacity-10">
+                <h5 class="modal-title fw-bold text-primary"><i class="fas fa-calendar-check me-2"></i>예약하기</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form id="reserveForm">
+                    <div class="mb-4 text-center">
+                        <h2 class="fw-bold mb-0" id="displayDate"></h2>
+                        <input type="hidden" id="resDate">
+                    </div>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-6">
+                            <label class="form-label fw-bold small text-uppercase text-muted">시작 시간</label>
+                            <select class="form-select form-select-lg" id="resStartTime" required>
+                                <!-- JS Populated -->
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold small text-uppercase text-muted">종료 시간</label>
+                            <select class="form-select form-select-lg" id="resEndTime" required>
+                                <!-- JS Populated -->
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">이름</label>
+                        <input type="text" class="form-control" id="resName" required placeholder="예: 홍길동">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">전화번호</label>
+                        <input type="tel" class="form-control" id="resPhone" required placeholder="예: 010-1234-5678">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">주소 (동/호수)</label>
+                        <input type="text" class="form-control" id="resAddress" required placeholder="예: 101동 202호">
+                        <div class="form-text small" style="color: #6c757d;">
+                            ※ 마을 주민 확인 및 동명이인 구분을 위해 동/호수까지 입력 부탁드립니다.
+                        </div>
+                    </div>
+
+                    <div class="form-check mb-4">
+                        <input class="form-check-input" type="checkbox" id="rememberMe" checked>
+                        <label class="form-check-label" for="rememberMe">내 정보 기억하기</label>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">이용 약관</label>
+                        <div class="terms-box" id="termsBox">
+                            <p><strong>1. 이용 시간 준수</strong><br>예약 시간 내에 입/퇴실을 완료해야 합니다.</p>
+                            <p><strong>2. 정리 정돈</strong><br>퇴실 시 사용한 물품을 제자리에 정리합니다.</p>
+                            <p><strong>3. 취소 정책</strong><br>당일 취소 및 노쇼(No-Show) 발생 시 30일간 예약이 제한됩니다.</p>
+                            <p><strong>4. 책임</strong><br>기물 파손 시 배상 책임이 있습니다.</p>
+                            <p>스크롤을 끝까지 내려야 동의 버튼이 활성화됩니다.</p>
+                            <br><br><br><br>
+                            <p class="text-center text-muted"><i class="fas fa-check-circle me-1"></i>약관 확인 완료</p>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="agreeTerms" disabled>
+                            <label class="form-check-label" for="agreeTerms">위 약관에 동의합니다.</label>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">자동 예약 방지</label>
+                        <div class="input-group">
+                            <span class="input-group-text bg-light border-0 fw-bold" id="captchaQuestion">3 + 5 =
+                                ?</span>
+                            <input type="number" class="form-control" id="captchaAnswer" required>
+                        </div>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer border-0 p-4 pt-0">
+                <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary rounded-pill px-5" id="btnSubmit">예약 신청</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Success Modal -->
+<div class="modal fade" id="successModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content text-center overflow-hidden border-0">
+            <div class="modal-body p-5">
+                <div class="mb-4 text-success rubberBand animated">
+                    <i class="fas fa-check-circle fa-6x"
+                        style="filter: drop-shadow(0 5px 15px rgba(25, 135, 84, 0.4));"></i>
+                </div>
+                <h3 class="fw-bold mb-2">예약 완료!</h3>
+                <p class="text-muted mb-4">즐거운 시간 되세요.</p>
+                <div class="d-grid gap-3">
+                    <a href="#" class="btn btn-primary btn-lg shadow" id="btnDownloadIcs">
+                        <i class="fas fa-calendar-alt me-2"></i> 내 캘린더에 저장 (.ics)
+                    </a>
+                    <button type="button" class="btn btn-outline-secondary rounded-pill"
+                        data-bs-dismiss="modal">닫기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        var calendarEl = document.getElementById('calendar');
+        var reserveModal = new bootstrap.Modal(document.getElementById('reserveModal'));
+        var successModal = new bootstrap.Modal(document.getElementById('successModal'));
+        let selectedDate = null;
+
+        // Populate Time Dropdowns (09:00 to 22:00)
+        function populateTimeOptions() {
+            const startSelect = document.getElementById('resStartTime');
+            const endSelect = document.getElementById('resEndTime');
+            startSelect.innerHTML = '';
+            endSelect.innerHTML = '';
+
+            for (let i = 9; i <= 21; i++) {
+                const hour = i.toString().padStart(2, '0');
+                startSelect.innerHTML += `<option value="${hour}:00">${hour}:00</option>`;
+                startSelect.innerHTML += `<option value="${hour}:30">${hour}:30</option>`;
+
+                // End time
+                const endHour = (i + 1).toString().padStart(2, '0');
+                endSelect.innerHTML += `<option value="${hour}:30">${hour}:30</option>`;
+                endSelect.innerHTML += `<option value="${endHour}:00">${endHour}:00</option>`;
+            }
+        }
+        populateTimeOptions();
+
+        // Load Remembered Info
+        if (localStorage.getItem('rememberMe') === 'true') {
+            document.getElementById('rememberMe').checked = true;
+            document.getElementById('resName').value = localStorage.getItem('userName') || '';
+            document.getElementById('resPhone').value = localStorage.getItem('userPhone') || '';
+            document.getElementById('resAddress').value = localStorage.getItem('userAddress') || '';
+        }
+
+        // CAPTCHA
+        let captchaAns = 0;
+        function refreshCaptcha() {
+            const a = Math.floor(Math.random() * 10);
+            const b = Math.floor(Math.random() * 10);
+            captchaAns = a + b;
+            document.getElementById('captchaQuestion').innerText = `${a} + ${b} = ?`;
+            document.getElementById('captchaAnswer').value = '';
+        }
+
+        // Terms Scroll
+        const termsBox = document.getElementById('termsBox');
+        termsBox.addEventListener('scroll', function () {
+            if (termsBox.scrollTop + termsBox.clientHeight >= termsBox.scrollHeight - 5) {
+                document.getElementById('agreeTerms').disabled = false;
+            }
+        });
+
+        // Calendar Init with Dynamic Responsive Logic
+        var calendar = null;
+        var currentMode = getMode(); // 'mobile' or 'pc'
+
+        function getMode() {
+            return window.innerWidth < 768 ? 'mobile' : 'pc';
+        }
+
+        function initCalendar() {
+            var mode = getMode();
+            var isMobile = (mode === 'mobile');
+
+            if (calendar) {
+                calendar.destroy();
+            }
+
+            calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                locale: 'ko',
+                // Mobile: 'auto' height for natural flow. PC: Fixed height to 70vh to fit chrome/taskbar.
+                height: isMobile ? 'auto' : '70vh',
+                // Mobile: 1.2 (Taller, easy to tap), PC: 2.2 (Wide/Short to fit 1080p)
+                aspectRatio: isMobile ? 1.2 : 2.2,
+
+                headerToolbar: {
+                    left: 'prev,next',
+                    center: 'title',
+                    right: 'dayGridMonth,listMonth today' // Restored buttons
+                },
+                buttonText: {
+                    listMonth: '목록',
+                    dayGridMonth: '달력',
+                    today: '오늘'
+                },
+                selectable: true,
+                dayMaxEvents: true,
+                events: '/api/reservations',
+                eventTimeFormat: { hour: '2-digit', minute: '2-digit', meridiem: false, hour12: false },
+
+                // Conditional Rendering based on Mode
+                eventContent: isMobile ? function (arg) {
+                    // Mobile List View: Show default (Time + Name)
+                    if (arg.view.type === 'listMonth') {
+                        return undefined;
+                    }
+                    // Mobile DayGrid: Show "예약" text only
+                    return { html: '<div class="text-center fw-bold" style="font-size:0.75rem;">예약</div>' };
+                } : undefined,
+
+                dayCellContent: isMobile ? function (info) {
+                    var number = info.dayNumberText.replace('일', '');
+                    return { html: number };
+                } : undefined,
+
+                dateClick: function (info) {
+                    selectedDate = info.dateStr;
+                    openReserveModal(selectedDate);
+                },
+                select: function (info) {
+                    selectedDate = info.startStr;
+                    openReserveModal(selectedDate);
+                }
+            });
+            calendar.render();
+            currentMode = mode;
+        }
+
+        initCalendar();
+
+        // Listen for resize to switch modes dynamically
+        window.addEventListener('resize', function () {
+            var newMode = getMode();
+            if (newMode !== currentMode) {
+                initCalendar();
+            }
+        });
+
+        function openReserveModal(dateStr) {
+            document.getElementById('resDate').value = dateStr;
+            const items = dateStr.split('-');
+            document.getElementById('displayDate').innerText = `${items[0]}년 ${items[1]}월 ${items[2]}일`;
+            reserveModal.show();
+            refreshCaptcha();
+        }
+
+        // Submit Logic
+        document.getElementById('btnSubmit').addEventListener('click', function () {
+            const name = document.getElementById('resName').value;
+            const phone = document.getElementById('resPhone').value;
+            const address = document.getElementById('resAddress').value;
+            const startTime = document.getElementById('resStartTime').value;
+            const endTime = document.getElementById('resEndTime').value;
+            const userCaptcha = parseInt(document.getElementById('captchaAnswer').value);
+            const agreed = document.getElementById('agreeTerms').checked;
+
+            if (!name || !phone || !address) { alert('필수 정보를 모두 입력해주세요.'); return; }
+            if (startTime >= endTime) { alert('종료 시간은 시작 시간보다 뒤여야 합니다.'); return; }
+            if (!agreed) { alert('약관에 동의해주세요.'); return; }
+            if (userCaptcha !== captchaAns) { alert('자동 예약 방지 정답이 틀렸습니다.'); return; }
+
+            // Save Info
+            if (document.getElementById('rememberMe').checked) {
+                localStorage.setItem('rememberMe', 'true');
+                localStorage.setItem('userName', name);
+                localStorage.setItem('userPhone', phone);
+                localStorage.setItem('userAddress', address);
+            } else {
+                localStorage.removeItem('rememberMe');
+            }
+
+            const payload = {
+                name: name,
+                phone: phone,
+                address: address,
+                start: `${selectedDate}T${startTime}:00`,
+                end: `${selectedDate}T${endTime}:00`
+            };
+
+            fetch('/api/reservations', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            })
+                .then(res => res.json().then(data => ({ status: res.status, body: data })))
+                .then(res => {
+                    if (res.status === 201) {
+                        reserveModal.hide();
+                        calendar.refetchEvents();
+
+                        const downloadBtn = document.getElementById('btnDownloadIcs');
+                        downloadBtn.href = `/api/reservations/${res.body.id}/download_ics`;
+
+                        successModal.show();
+                    } else {
+                        alert('예약 실패: ' + res.body.error);
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert('서버 통신 오류');
+                });
+        });
+    });
+</script>
+{% endblock %}

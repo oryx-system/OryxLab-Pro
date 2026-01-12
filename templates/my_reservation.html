@@ -1,0 +1,236 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8 col-lg-6">
+        <h2 class="mb-4 text-center fw-bold">내 예약 관리</h2>
+
+        <!-- Login Card -->
+        <div class="card shadow-lg mb-4 border-0" id="loginCard">
+            <div class="card-body p-5">
+                <div class="text-center mb-4 text-primary">
+                    <i class="fas fa-user-circle fa-4x"></i>
+                </div>
+                <h5 class="card-title fw-bold mb-3 text-center">본인 인증</h5>
+                <p class="text-muted text-center mb-4">예약 시 입력한 전화번호로 예약 내역을 조회합니다.</p>
+                <div class="form-floating mb-3">
+                    <input type="tel" id="myPhone" class="form-control" placeholder="010-1234-5678">
+                    <label for="myPhone">전화번호</label>
+                </div>
+                <div class="d-grid">
+                    <button class="btn btn-primary btn-lg" id="btnLookUp">조회하기</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- History Section -->
+        <div id="historySection" style="display:none;">
+            <!-- Facility Info Card (Only visible after login) -->
+            <div class="card bg-primary text-white mb-4 shadow-lg border-0"
+                style="background: linear-gradient(135deg, #00BFA5 0%, #008f7a 100%);">
+                <div class="card-body p-4">
+                    <h5 class="fw-bold mb-3"><i class="fas fa-info-circle me-2"></i>시설 이용 정보</h5>
+                    <div class="row g-0 bg-white bg-opacity-25 rounded-3 p-3">
+                        <div class="col-6 border-end border-white border-opacity-25 text-center">
+                            <div class="small opacity-75 text-uppercase fw-bold mb-1">Wi-Fi</div>
+                            <div class="fw-bold fs-5" id="wifiInfo">Loading...</div>
+                        </div>
+                        <div class="col-6 text-center">
+                            <div class="small opacity-75 text-uppercase fw-bold mb-1">출입문 비밀번호</div>
+                            <div class="fw-bold fs-5" id="doorInfo">Loading...</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <h4 class="fw-bold">예약 내역</h4>
+                <button class="btn btn-outline-secondary btn-sm rounded-pill px-3" id="btnLogout">
+                    <i class="fas fa-sign-out-alt me-1"></i>다른 번호 조회
+                </button>
+            </div>
+            <div id="historyList"></div>
+        </div>
+    </div>
+</div>
+
+<!-- Cancel Modal -->
+<div class="modal fade" id="cancelModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0">
+            <div class="modal-header bg-danger text-white border-0">
+                <h5 class="modal-title fw-bold"><i class="fas fa-exclamation-circle me-2"></i>예약 취소</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p id="cancelMsg" class="mb-3 fs-5">정말 예약을 취소하시겠습니까?</p>
+                <div class="alert alert-warning border-0 shadow-sm" id="penaltyWarning"
+                    style="display:none; background-color: #fff3cd; color: #856404;">
+                    <div class="d-flex">
+                        <i class="fas fa-exclamation-triangle fa-2x me-3 mt-1"></i>
+                        <div>
+                            <h6 class="fw-bold">당일 취소 안내 (노쇼 정책)</h6>
+                            <p class="mb-0 small">
+                                당일 취소 시 <strong>노쇼(No-Show)</strong>로 간주되어<br>
+                                향후 <strong>30일간 예약이 자동 차단</strong>됩니다.
+                            </p>
+                        </div>
+                    </div>
+                    <div class="form-check mt-3">
+                        <input class="form-check-input" type="checkbox" id="agreePenalty">
+                        <label class="form-check-label fw-bold" for="agreePenalty">노쇼 패널티 정책에 동의하며 취소합니다.</label>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer border-0 p-3 pt-0">
+                <button type="button" class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">닫기</button>
+                <button type="button" class="btn btn-danger rounded-pill px-4" id="btnConfirmCancel">취소 확정</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    let currentPhone = '';
+    let targetCancelId = null;
+    let isPenalty = false;
+
+    document.getElementById('btnLookUp').addEventListener('click', loadHistory);
+    document.getElementById('btnLogout').addEventListener('click', function () {
+        document.getElementById('loginCard').style.display = 'block';
+        document.getElementById('historySection').style.display = 'none';
+        document.getElementById('myPhone').value = '';
+    });
+
+    function loadHistory() {
+        const phone = document.getElementById('myPhone').value;
+        if (!phone) return alert('전화번호를 입력하세요');
+
+        fetch(`/api/my_reservations?phone=${phone}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                    return;
+                }
+                if (data.length > 0) {
+                    document.getElementById('wifiInfo').innerText = data[0].wifi_info || '정보 없음';
+                    document.getElementById('doorInfo').innerText = data[0].door_pw || '정보 없음';
+                }
+
+                currentPhone = phone;
+                renderList(data);
+                document.getElementById('loginCard').style.display = 'none';
+                document.getElementById('historySection').style.display = 'block';
+            });
+    }
+
+    function renderList(list) {
+        const container = document.getElementById('historyList');
+        container.innerHTML = '';
+
+        if (list.length === 0) {
+            container.innerHTML = `
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-calendar-times fa-3x mb-3 opacity-50"></i>
+                    <p>예약 내역이 없습니다.</p>
+                </div>`;
+            document.getElementById('wifiInfo').innerText = '-';
+            document.getElementById('doorInfo').innerText = '-';
+            return;
+        }
+
+        list.forEach(item => {
+            const statusMap = {
+                'reserved': '<span class="badge bg-primary rounded-pill px-3">예약중</span>',
+                'checked_in': '<span class="badge bg-success rounded-pill px-3">사용중</span>',
+                'ended': '<span class="badge bg-secondary rounded-pill px-3">종료</span>',
+                'cancelled': '<span class="badge bg-warning text-dark rounded-pill px-3">취소됨</span>',
+                'noshow_penalty': '<span class="badge bg-danger rounded-pill px-3">노쇼 차단</span>'
+            };
+
+            const card = document.createElement('div');
+            card.className = 'card mb-3 border-0 shadow-sm';
+
+            let btnHtml = '';
+            if (item.status === 'reserved') {
+                btnHtml = `<button class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="openCancel(${item.id}, '${item.start}')">예약 취소</button>`;
+            }
+
+            card.innerHTML = `
+                <div class="card-body p-4">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <div>
+                            <h5 class="fw-bold mb-1">${item.start.split(' ')[0]}</h5>
+                            <div class="text-primary fw-bold">${item.start.split(' ')[1]} ~ ${item.end}</div>
+                        </div>
+                        ${statusMap[item.status] || item.status}
+                    </div>
+                    <div class="d-flex align-items-center text-muted small mb-3">
+                        <i class="fas fa-map-marker-alt me-2 text-danger"></i>${item.address}
+                    </div>
+                    <div class="text-end border-top pt-3">
+                        ${btnHtml}
+                    </div>
+                </div>
+            `;
+            container.appendChild(card);
+        });
+    }
+
+    window.openCancel = function (id, startStr) {
+        targetCancelId = id;
+        const startDate = new Date(startStr);
+        const today = new Date();
+        const isToday = startDate.toDateString() === today.toDateString();
+
+        const warning = document.getElementById('penaltyWarning');
+        const msg = document.getElementById('cancelMsg');
+        const agreeCheck = document.getElementById('agreePenalty');
+
+        // Reset checkbox
+        agreeCheck.checked = false;
+
+        if (isToday) {
+            isPenalty = true;
+            warning.style.display = 'block';
+            msg.innerText = "오늘 날짜의 예약입니다.";
+            document.getElementById('btnConfirmCancel').disabled = true;
+
+            agreeCheck.addEventListener('change', function () {
+                document.getElementById('btnConfirmCancel').disabled = !this.checked;
+            });
+
+        } else {
+            isPenalty = false;
+            warning.style.display = 'none';
+            msg.innerText = "정말 예약을 취소하시겠습니까?";
+            document.getElementById('btnConfirmCancel').disabled = false;
+        }
+
+        new bootstrap.Modal(document.getElementById('cancelModal')).show();
+    }
+
+    document.getElementById('btnConfirmCancel').addEventListener('click', function () {
+        if (!targetCancelId) return;
+
+        fetch(`/api/reservations/${targetCancelId}/cancel`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ is_penalty: isPenalty })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert('취소되었습니다.');
+                    location.reload();
+                } else {
+                    alert('오류: ' + data.error);
+                }
+            });
+    });
+</script>
+{% endblock %}

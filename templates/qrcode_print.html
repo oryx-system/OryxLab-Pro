@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="ko">
+
+<head>
+    <meta charset="UTF-8">
+    <title>QR 코드 인쇄</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <style>
+        body {
+            text-align: center;
+            font-family: 'Noto Sans KR', sans-serif;
+            padding-top: 50px;
+        }
+
+        #qrcode {
+            display: inline-block;
+            margin: 20px;
+        }
+
+        .print-btn {
+            padding: 10px 20px;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        @media print {
+            .print-btn {
+                display: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <h1>지혜마루 작은 도서관 체크인</h1>
+    <p>아래 QR 코드를 스캔하여 입실 체크인을 진행해주세요.</p>
+
+    <div id="qrcode"></div>
+
+    <br>
+    <button class="print-btn" onclick="window.print()">인쇄하기</button>
+
+    <script>
+        // Generate QR Code pointing to the /checkin page
+        // Assuming the device is accessible via the network IP or domain
+        // For local testing, we use window.location.origin
+        var url = window.location.origin + "/checkin";
+        new QRCode(document.getElementById("qrcode"), {
+            text: url,
+            width: 256,
+            height: 256
+        });
+    </script>
+</body>
+
+</html>
