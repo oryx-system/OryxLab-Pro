@@ -15,32 +15,37 @@
 
 <ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
     <li class="nav-item" role="presentation">
-        <button class="nav-link active fw-bold" id="reservations-tab" data-bs-toggle="tab"
-            data-bs-target="#reservations" type="button">예약 관리</button>
+        <button class="nav-link active fw-bold text-primary" id="reservations-tab" data-bs-toggle="tab"
+            data-bs-target="#reservations" type="button"><i class="fas fa-calendar-check me-1"></i>예약 관리</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link fw-bold" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings"
-            type="button">환경 설정</button>
+        <button class="nav-link fw-bold text-secondary" id="settings-tab" data-bs-toggle="tab"
+            data-bs-target="#settings" type="button"><i class="fas fa-cog me-1"></i>환경 설정</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link fw-bold" id="feedback-tab" data-bs-toggle="tab" data-bs-target="#feedback"
-            type="button">사용자 피드백</button>
+        <button class="nav-link fw-bold text-info" id="feedback-tab" data-bs-toggle="tab" data-bs-target="#feedback"
+            type="button"><i class="fas fa-comments me-1"></i>사용자 피드백</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link fw-bold" id="backup-tab" data-bs-toggle="tab" data-bs-target="#backup" type="button">백업
-            및 관리</button>
+        <button class="nav-link fw-bold text-dark" id="backup-tab" data-bs-toggle="tab" data-bs-target="#backup"
+            type="button">
+            <i class="fas fa-database me-1"></i>백업 및 관리</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link fw-bold text-danger" id="block-tab" data-bs-toggle="tab" data-bs-target="#block"
-            type="button">차단 관리</button>
+            type="button"><i class="fas fa-user-slash me-1"></i>차단 관리</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link fw-bold text-success" id="email-tab" data-bs-toggle="tab" data-bs-target="#email"
             type="button"><i class="fas fa-envelope me-1"></i>이메일 설정</button>
     </li>
     <li class="nav-item" role="presentation">
-        <button class="nav-link fw-bold text-primary" id="notification-tab" data-bs-toggle="tab"
+        <button class="nav-link fw-bold text-warning" id="notification-tab" data-bs-toggle="tab"
             data-bs-target="#notification" type="button"><i class="fas fa-bell me-1"></i>알림 설정</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link fw-bold text-primary" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats"
+            type="button"><i class="fas fa-chart-pie me-1"></i>통계</button>
     </li>
 </ul>
 
@@ -67,8 +72,30 @@
                 </div>
             </div>
             <div class="card-body p-0">
+                <div class="p-3 border-bottom bg-light">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold text-muted mb-1"><i
+                                    class="far fa-calendar-alt me-1"></i>날짜 조회</label>
+                            <input type="text" id="filterDate" class="form-control form-control-sm bg-white"
+                                placeholder="모든 날짜 보기">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label small fw-bold text-muted mb-1"><i class="fas fa-search me-1"></i>빠른
+                                검색</label>
+                            <input type="text" id="filterSearch" class="form-control form-control-sm"
+                                list="reservationOptions" placeholder="이름 또는 전화번호 (자동완성)">
+                            <datalist id="reservationOptions"></datalist>
+                        </div>
+                        <div class="col-md-2">
+                            <button class="btn btn-secondary btn-sm w-100" onclick="resetFilters()">
+                                <i class="fas fa-undo me-1"></i>초기화
+                            </button>
+                        </div>
+                    </div>
+                </div>
                 <div class="table-responsive">
-                    <table class="table table-hover align-middle mb-0">
+                    <table class="table table-hover align-middle mb-0" id="reservationTable">
                         <thead class="table-light">
                             <tr>
                                 <th>상태</th>
@@ -82,7 +109,9 @@
                         </thead>
                         <tbody>
                             {% for r in reservations %}
-                            <tr>
+                            <tr class="reservation-row" data-date="{{ r.start_time.strftime('%Y-%m-%d') }}"
+                                data-name="{{ r.name }}" data-phone="{{ r.phone }}"
+                                data-search="{{ r.name }} {{ r.phone }}">
                                 <td>
                                     {% if r.status == 'reserved' %}<span class="badge bg-primary">예약중</span>
                                     {% elif r.status == 'checked_in' %}<span class="badge bg-success">체크인</span>
@@ -137,6 +166,50 @@
                             {% endfor %}
                         </tbody>
                     </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Statistics Tab -->
+    <div class="tab-pane fade" id="stats" role="tabpanel">
+        <div class="d-flex justify-content-end mb-3">
+            <button class="btn btn-sm btn-outline-primary" onclick="forceReloadStats()">
+                <i class="fas fa-sync-alt me-1"></i>데이터 새로고침
+            </button>
+        </div>
+        <div class="row g-4">
+            <!-- Pie Chart: Status -->
+            <div class="col-md-5">
+                <div class="card shadow h-100">
+                    <div class="card-header bg-white fw-bold">
+                        <i class="fas fa-chart-pie me-2 text-primary"></i>예약 상태 비율
+                    </div>
+                    <div class="card-body">
+                        <canvas id="statusChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <!-- Bar Chart: Weekly -->
+            <div class="col-md-7">
+                <div class="card shadow h-100">
+                    <div class="card-header bg-white fw-bold">
+                        <i class="fas fa-calendar-week me-2 text-success"></i>요일별 이용 추이 (최근 전체)
+                    </div>
+                    <div class="card-body">
+                        <canvas id="weeklyChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <!-- Line Chart: Hourly -->
+            <div class="col-12">
+                <div class="card shadow">
+                    <div class="card-header bg-white fw-bold">
+                        <i class="fas fa-clock me-2 text-warning"></i>시간대별 이용 분포 (Peak Hours)
+                    </div>
+                    <div class="card-body">
+                        <canvas id="hourlyChart" style="max-height: 400px;"></canvas>
+                    </div>
                 </div>
             </div>
         </div>
@@ -597,7 +670,123 @@
     </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
+    // Stats Logic
+    let statsLoaded = false;
+    let statusChart = null;
+    let weeklyChart = null;
+    let hourlyChart = null;
+
+    const statsTab = document.getElementById('stats-tab');
+
+    statsTab.addEventListener('shown.bs.tab', function (event) {
+        loadStats();
+    });
+
+    function forceReloadStats() {
+        statsLoaded = false;
+        loadStats();
+    }
+
+    function loadStats() {
+        if (statsLoaded) return;
+
+        fetch('/api/admin/stats')
+            .then(res => {
+                if (res.status === 401) {
+                    window.location.replace('/login?next=/admin');
+                    // Throw special error to skip next .then
+                    throw new Error("REDIRECT_LOGIN");
+                }
+                if (!res.ok) throw new Error("HTTP " + res.status);
+                return res.json();
+            })
+            .then(data => {
+                if (!data) return;
+                console.log("[Stats Data]", data);
+                renderCharts(data);
+                statsLoaded = true;
+            })
+            .catch(err => {
+                if (err.message === "REDIRECT_LOGIN") return; // Ignore Redirect Error
+                console.error(err);
+                alert('통계 로드 오류: ' + err.message);
+            });
+    }
+
+    function renderCharts(data) {
+        // Destroy old instances
+        if (statusChart) statusChart.destroy();
+        if (weeklyChart) weeklyChart.destroy();
+        if (hourlyChart) hourlyChart.destroy();
+
+        // 1. Status Pie
+        const ctxStatus = document.getElementById('statusChart').getContext('2d');
+        const statusMap = {
+            'reserved': '예약중', 'checked_in': '이용중', 'ended': '종료',
+            'cancelled': '취소', 'noshow_penalty': '노쇼'
+        };
+        const statusLabels = Object.keys(data.status).map(k => statusMap[k] || k);
+        const statusValues = Object.values(data.status);
+
+        statusChart = new Chart(ctxStatus, {
+            type: 'doughnut',
+            data: {
+                labels: statusLabels,
+                datasets: [{
+                    data: statusValues,
+                    backgroundColor: ['#0d6efd', '#198754', '#6c757d', '#ffc107', '#dc3545'],
+                }]
+            }
+        });
+
+        // 2. Weekly Bar
+        const ctxWeekly = document.getElementById('weeklyChart').getContext('2d');
+        const days = ['월', '화', '수', '목', '금', '토', '일'];
+        // Fix: Use generic access for string/int keys
+        const weeklyValues = days.map((d, i) => data.weekly[String(i)] || data.weekly[i] || 0);
+
+        weeklyChart = new Chart(ctxWeekly, {
+            type: 'bar',
+            data: {
+                labels: days,
+                datasets: [{
+                    label: '예약 건수',
+                    data: weeklyValues,
+                    backgroundColor: 'rgba(25, 135, 84, 0.6)',
+                    borderColor: 'rgba(25, 135, 84, 1)',
+                    borderWidth: 1
+                }]
+            },
+            options: { scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+        });
+
+        // 3. Hourly Line
+        const ctxHourly = document.getElementById('hourlyChart').getContext('2d');
+        const hours = Array.from({ length: 14 }, (_, i) => i + 9);
+        const hourlyValues = hours.map(h => data.hourly[String(h)] || data.hourly[h] || 0);
+
+        hourlyChart = new Chart(ctxHourly, {
+            type: 'line',
+            data: {
+                labels: hours.map(h => `${h}시`),
+                datasets: [{
+                    label: '시간대별 이용 빈도',
+                    data: hourlyValues,
+                    fill: true,
+                    backgroundColor: 'rgba(255, 193, 7, 0.2)',
+                    borderColor: 'rgba(255, 193, 7, 1)',
+                    tension: 0.4
+                }]
+            },
+            options: {
+                scales: { y: { beginAtZero: true } },
+                plugins: { legend: { display: false } }
+            }
+        });
+    }
+
     function saveMemo(id) {
         const memo = document.getElementById(`memo-${id}`).value;
         fetch(`/admin/memo/${id}`, {
@@ -686,36 +875,43 @@
     }
 
     function blockUser(phone, name) {
-        if (!confirm(`정말 ${name}님을 30일간 차단하시겠습니까?`)) return;
-
-        fetch(`/admin/block/${phone}`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ name: name })
-        })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert('차단되었습니다.', function () {
-                        location.reload();
-                    });
-                }
-            });
+        showConfirm(`정말 ${name}님을 30일간 차단하시겠습니까?`, function () {
+            fetch(`/admin/block/${phone}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ name: name })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('차단되었습니다.', function () {
+                            location.reload();
+                        });
+                    }
+                });
+        });
     }
 
     function unblockUser(phone, name) {
-        if (!confirm(`${name}님의 차단을 해제하시겠습니까?`)) return;
-
-        fetch(`/admin/unblock/${phone}`, { method: 'POST' })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) {
-                    showAlert('차단이 해제되었습니다.', function () {
-                        location.reload();
-                    });
-                } else {
-                    showAlert('해제 실패: ' + (data.error || 'Unknown'));
-                }
+        showConfirm(`${name}님의 차단을 해제하시겠습니까?`, function () {
+            fetch(`/admin/unblock/${phone}`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('차단이 해제되었습니다.', function () {
+                            location.reload();
+                        });
+                    }
+                });
+        });
+    }
+    if (data.success) {
+        showAlert('차단이 해제되었습니다.', function () {
+            location.reload();
+        });
+    } else {
+        showAlert('해제 실패: ' + (data.error || 'Unknown'));
+    }
             });
     }
 
@@ -954,5 +1150,86 @@
             })
             .catch(err => showAlert('서버 통신 오류'));
     }
+
+    // --- Data Filtering Logic ---
+    document.addEventListener('DOMContentLoaded', function () {
+        // 1. Init Flatpickr (Range Mode)
+        const fp = flatpickr("#filterDate", {
+            mode: "range",
+            locale: "ko",
+            dateFormat: "Y-m-d",
+            onChange: function (selectedDates, dateStr) {
+                applyFilters();
+            }
+        });
+
+        // 2. Populate Autocomplete
+        const rows = document.querySelectorAll('.reservation-row');
+        const datalist = document.getElementById('reservationOptions');
+        const uniqueValues = new Set();
+
+        rows.forEach(row => {
+            const name = row.dataset.name;
+            const phone = row.dataset.phone;
+            if (name) uniqueValues.add(name);
+            if (phone) uniqueValues.add(phone);
+        });
+
+        uniqueValues.forEach(val => {
+            const option = document.createElement('option');
+            option.value = val;
+            datalist.appendChild(option);
+        });
+
+        // 3. Filter Implementation
+        const searchInput = document.getElementById('filterSearch');
+
+        searchInput.addEventListener('input', applyFilters);
+
+        function applyFilters() {
+            const search = searchInput.value.toLowerCase().trim();
+
+            // Get Dates
+            let start = null;
+            let end = null;
+            if (fp.selectedDates.length > 0) {
+                start = fp.formatDate(fp.selectedDates[0], "Y-m-d");
+                end = fp.selectedDates.length > 1
+                    ? fp.formatDate(fp.selectedDates[1], "Y-m-d")
+                    : start;
+            }
+
+            rows.forEach(row => {
+                const rowDate = row.dataset.date; // YYYY-MM-DD
+                const rowSearch = row.dataset.search.toLowerCase();
+
+                // Date Check
+                let showDate = true;
+                if (start && end) {
+                    if (rowDate < start || rowDate > end) showDate = false;
+                }
+
+                // Text Check
+                let showText = true;
+                if (search && !rowSearch.includes(search)) showText = false;
+
+                if (showDate && showText) {
+                    row.style.display = '';
+                } else {
+                    row.style.display = 'none';
+                }
+            });
+        }
+
+        window.resetFilters = function () {
+            fp.clear();
+            searchInput.value = '';
+            applyFilters();
+        }
+    });
+    searchInput.value = '';
+    applyFilters();
+    }
+    });
 </script>
 {% endblock %}

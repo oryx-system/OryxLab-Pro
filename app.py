@@ -130,7 +130,9 @@ class Reservation(db.Model):
             'start': self.start_time.isoformat(),
             'end': self.end_time.isoformat(),
             'status': self.status,
-            # Private info NOT included
+            'backgroundColor': '#00BFA5',
+            'borderColor': '#00BFA5',
+            'textColor': '#ffffff'
         }
 
 class Blacklist(db.Model):
@@ -396,57 +398,35 @@ def create_reservation():
     start_str = data.get('start')
     end_str = data.get('end')
     
+    # Recurring Params
+    repeat_type = data.get('repeat_type') # 'weekly' or None
+    repeat_count = data.get('repeat_count', 1) 
+    
     if not all([name, phone, password, purpose, start_str, end_str]):
         return jsonify({'error': '필수 입력 항목이 누락되었습니다.'}), 400
 
     try:
-        start_time = datetime.fromisoformat(start_str)
-        end_time = datetime.fromisoformat(end_str)
+        base_start = datetime.fromisoformat(start_str)
+        base_end = datetime.fromisoformat(end_str)
+        repeat_count = int(repeat_count)
     except ValueError:
         return jsonify({'error': '날짜 형식이 올바르지 않습니다.'}), 400
 
-    if start_time < datetime.now():
+    if base_start < datetime.now():
         return jsonify({'error': '지난 날짜는 예약할 수 없습니다.'}), 400
 
-    # 0. Global/Partial Pause Check
-    if get_setting('reservation_paused') == 'true':
-        pause_mode = get_setting('pause_mode', 'all')
-        reason = get_setting('pause_reason', '시스템 점검으로 인한 예약 일시 중지')
-        
-        should_block = False
-        if pause_mode == 'all':
-            should_block = True
-        elif pause_mode == 'partial':
-            import json
-            # Load ranges
-            ranges_str = get_setting('pause_ranges', '[]')
-            try:
-                pause_ranges = json.loads(ranges_str)
-            except:
-                pause_ranges = []
-                
-            # Fallback for old single range if 'pause_ranges' is empty but legacy keys exist
-            if not pause_ranges:
-                p_start = get_setting('pause_start')
-                p_end = get_setting('pause_end')
-                if p_start and p_end:
-                    pause_ranges.append({'start': p_start, 'end': p_end})
-            
-            # Check overlap
-            res_date = start_time.strftime('%Y-%m-%d')
-            for rng in pause_ranges:
-                # Assuming rng is {start: 'YYYY-MM-DD', end: 'YYYY-MM-DD', reason: '...'}
-                if rng.get('start') <= res_date <= rng.get('end'):
-                    should_block = True
-                    # Use specific reason if available
-                    if rng.get('reason'):
-                        reason = rng.get('reason')
-                    break
-                    
-        if should_block:
-            return jsonify({'error': f'해당 기간은 예약이 일시 중지되었습니다.\n사유: {reason}'}), 403
+    # 1. Prepare Target Slots
+    target_slots = []
+    if repeat_type == 'weekly' and repeat_count > 1:
+        # Limit max to 4 for safety
+        count = min(repeat_count, 4)
+        for i in range(count):
+            delta = timedelta(weeks=i)
+            target_slots.append((base_start + delta, base_end + delta))
+    else:
+        target_slots.append((base_start, base_end))
 
-    # 1. Blacklist Check
+    # 2. Global Checks (Blacklist) - Check once for the user
     blocked = Blacklist.query.filter_by(phone=phone).first()
     if blocked:
         if blocked.release_date > datetime.now():
@@ -455,63 +435,120 @@ def create_reservation():
             db.session.delete(blocked)
             db.session.commit()
 
-    # 2. Status Check: Do not double book
-    overlap = Reservation.query.filter(
-        Reservation.start_time < end_time,
-        Reservation.end_time > start_time,
-        Reservation.status.in_(['reserved', 'checked_in'])
-    ).first()
-    if overlap:
-        return jsonify({'error': '이미 예약된 시간입니다.'}), 409
-
-    # 3. Daily Limit (4 hours)
-    today_start = start_time.replace(hour=0, minute=0, second=0, microsecond=0)
-    today_end = start_time.replace(hour=23, minute=59, second=59, microsecond=999999)
-    daily_res = Reservation.query.filter(
-        Reservation.phone == phone,
-        Reservation.start_time >= today_start,
-        Reservation.start_time <= today_end,
-        Reservation.status.in_(['reserved', 'checked_in', 'ended'])
-    ).all()
+    # 3. Validation Loop (Atomic Check)
+    # If ANY slot fails, the whole request fails.
     
-    total_minutes = sum([(r.end_time - r.start_time).total_seconds() / 60 for r in daily_res])
-    new_duration = (end_time - start_time).total_seconds() / 60
-    
-    if total_minutes + new_duration > 240:
-        return jsonify({'error': '하루 최대 4시간까지만 이용 가능합니다.'}), 400
-
-    # 4. Save Signature Image (DB Blob)
+    # Pre-fetch Image Blob if exists
     sig_blob = None
     if 'signature' in data and data['signature']:
         try:
-             # Format: "data:image/png;base64,iVBOR..."
              header, encoded = data['signature'].split(',', 1)
-             img_data = base64.b64decode(encoded)
-             sig_blob = img_data
+             sig_blob = base64.b64decode(encoded)
         except Exception as e:
              print(f"Signature Decode Error: {e}")
 
-    new_res = Reservation(
-        name=name.strip(),
-        phone=phone.strip(),
-        password=password.strip(),
-        purpose=purpose.strip(),
-        start_time=start_time,
-        end_time=end_time,
-        signature_blob=sig_blob
-    )
-    db.session.add(new_res)
-    db.session.commit()
-    
-    # Telegram Alert
+    reservations_to_create = []
+
+    for idx, (s_time, e_time) in enumerate(target_slots):
+        date_label = s_time.strftime('%Y-%m-%d')
+        nth_label = f"{idx + 1}번째 예약({date_label})"
+
+        # A. Pause Check
+        if get_setting('reservation_paused') == 'true':
+            pause_mode = get_setting('pause_mode', 'all')
+            reason = get_setting('pause_reason', '시스템 점검')
+            
+            should_block = False
+            if pause_mode == 'all':
+                should_block = True
+            elif pause_mode == 'partial':
+                res_date = s_time.strftime('%Y-%m-%d')
+                import json
+                try:
+                    pause_ranges = json.loads(get_setting('pause_ranges', '[]'))
+                except:
+                    pause_ranges = []
+                
+                # Fallback logic
+                if not pause_ranges:
+                    p_s = get_setting('pause_start')
+                    p_e = get_setting('pause_end')
+                    if p_s and p_e: pause_ranges.append({'start': p_s, 'end': p_e})
+
+                for rng in pause_ranges:
+                    if rng.get('start') <= res_date <= rng.get('end'):
+                        should_block = True
+                        if rng.get('reason'): reason = rng.get('reason')
+                        break
+            
+            if should_block:
+                return jsonify({'error': f'[{nth_label}] 해당 기간은 예약이 일시 중지되었습니다.\n사유: {reason}'}), 403
+
+        # B. Overlap Check
+        overlap = Reservation.query.filter(
+            Reservation.start_time < e_time,
+            Reservation.end_time > s_time,
+            Reservation.status.in_(['reserved', 'checked_in'])
+        ).first()
+        
+        if overlap:
+            return jsonify({'error': f'[{nth_label}] 이미 예약된 시간입니다.'}), 409
+
+        # C. Daily Limit Check
+        t_start = s_time.replace(hour=0, minute=0, second=0, microsecond=0)
+        t_end = s_time.replace(hour=23, minute=59, second=59, microsecond=999999)
+        daily_res = Reservation.query.filter(
+            Reservation.phone == phone,
+            Reservation.start_time >= t_start,
+            Reservation.start_time <= t_end,
+            Reservation.status.in_(['reserved', 'checked_in', 'ended'])
+        ).all()
+        
+        total_minutes = sum([(r.end_time - r.start_time).total_seconds() / 60 for r in daily_res])
+        new_duration = (e_time - s_time).total_seconds() / 60
+        
+        if total_minutes + new_duration > 240:
+             return jsonify({'error': f'[{nth_label}] 하루 최대 4시간까지만 이용 가능합니다.'}), 400
+
+        # Ready to create
+        new_res = Reservation(
+            name=name.strip(),
+            phone=phone.strip(),
+            password=password.strip(),
+            purpose=purpose.strip(),
+            start_time=s_time,
+            end_time=e_time,
+            signature_blob=sig_blob
+        )
+        reservations_to_create.append(new_res)
+
+    # 4. Atomic Commit
     try:
-        msg = f"[새 예약 알림]\n- 예약자: {new_res.name}\n- 전화번호: {new_res.phone}\n- 시간: {new_res.start_time.strftime('%Y-%m-%d %H:%M')} ~ {new_res.end_time.strftime('%H:%M')}\n- 목적: {new_res.purpose}"
+        db.session.add_all(reservations_to_create)
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': f'데이터베이스 저장 중 오류가 발생했습니다: {str(e)}'}), 500
+    
+    # 5. Notifications
+    # If multiple, send summary or multiple messages.
+    # For now, we only alert the FIRST one to avoid spamming admin, or summary.
+    try:
+        first_res = reservations_to_create[0]
+        count = len(reservations_to_create)
+        
+        type_str = f"[정기 예약 {count}건]" if count > 1 else "[새 예약]"
+        
+        msg = f"{type_str}\n- 예약자: {first_res.name}\n- 전화번호: {first_res.phone}\n- 첫 예약: {first_res.start_time.strftime('%Y-%m-%d %H:%M')}"
+        if count > 1:
+            msg += f"\n- 기간: {count}주간 반복"
+        
         send_telegram_alert(msg)
     except:
-        pass # Fail silently
+        pass
 
-    
-    return jsonify({'success': True, 'id': new_res.id}), 201
+    # Return ID of the first reservation for ICS download
+    return jsonify({'success': True, 'id': reservations_to_create[0].id, 'count': len(reservations_to_create)}), 201
 
 @app.route('/api/feedback', methods=['POST'])
 def submit_feedback():
@@ -1300,6 +1337,50 @@ def stats_today():
     ).order_by(Reservation.start_time).all()
     
     return jsonify([r.to_dict() for r in res_list])
+
+@app.route('/api/admin/stats')
+def admin_stats():
+    if not session.get('is_admin') and not session.get('is_dev'):
+        return jsonify({'error': 'Unauthorized'}), 401
+        
+    reservations = Reservation.query.all()
+    
+    # Init Data Structures
+    # 0 = Mon, 6 = Sun
+    weekly_counts = {0: 0, 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0} 
+    hourly_counts = {h: 0 for h in range(9, 23)} # 09:00 ~ 22:00
+    status_counts = {'reserved': 0, 'checked_in': 0, 'ended': 0, 'cancelled': 0, 'noshow_penalty': 0}
+    
+    for r in reservations:
+        # Status
+        s = r.status
+        if s in status_counts:
+            status_counts[s] += 1
+        else:
+            # Group others
+            status_counts.setdefault('other', 0)
+            status_counts['other'] += 1
+            
+        # Skip cancelled for Usage Stats? 
+        # Requirement says "When people use it", so maybe exclude cancelled for time stats.
+        if r.status in ['cancelled']:
+            continue
+            
+        # Weekly
+        dow = r.start_time.weekday()
+        weekly_counts[dow] += 1
+        
+        # Hourly (Count every hour occupied)
+        # Simple version: Start Hour
+        h = r.start_time.hour
+        if 9 <= h <= 22:
+            hourly_counts[h] += 1
+            
+    return jsonify({
+        'weekly': weekly_counts,
+        'hourly': hourly_counts,
+        'status': status_counts
+    })
 
 
 @app.route('/developer')

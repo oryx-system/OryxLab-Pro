@@ -75,13 +75,36 @@
                         <input type="password" class="form-control" id="resPassword" required placeholder="숫자 4자리"
                             inputmode="numeric" pattern="[0-9]*" maxlength="4">
                         <div class="form-text small" style="color: #6c757d;">
-                            ※ 나중에 예약을 확인하거나 취소할 때 사용됩니다. (숫자 4자리)
+                            ※ 나중에 예약을 확인하거나 취소할 때 사용됩니다.
                         </div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">사용 목적</label>
                         <input type="text" class="form-control" id="resPurpose" required
                             placeholder="예: 독서 모임, 코딩 수업, 인문학 강의 등">
+                    </div>
+
+                    <!-- Recurring Reservation -->
+                    <div class="mb-4 p-3 bg-light rounded shadow-sm">
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="checkRecurring">
+                            <label class="form-check-label fw-bold" for="checkRecurring">
+                                정기 예약 설정 <span class="badge bg-success ms-1">New</span>
+                            </label>
+                            <small class="d-block text-muted">매주 같은 시간에 반복해서 예약합니다.</small>
+                        </div>
+                        <div class="mt-3 ps-2" id="recurringOptions" style="display: none;">
+                            <label class="form-label small fw-bold mb-1">총 반복 횟수 (이번 주 포함)</label>
+                            <select class="form-select form-select-sm" id="repeatCount">
+                                <option value="2">2주 (2회)</option>
+                                <option value="3">3주 (3회)</option>
+                                <option value="4">4주 (4회)</option>
+                            </select>
+                            <div class="form-text small text-info">
+                                <i class="fas fa-info-circle me-1"></i>선택한 날짜부터 <strong>매주 1회씩</strong> 자동 예약됩니다.<br>
+                                (예: 4주 선택 시 오늘, 다음 주, 다다음 주, 3주 후 예약)
+                            </div>
+                        </div>
                     </div>
 
                     <div class="form-check mb-4">
@@ -159,7 +182,7 @@
 
 <!-- Feedback Modal -->
 <div class="modal fade" id="feedbackModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-dialog modal-dialog-centered modal-bottom-right">
         <div class="modal-content border-0">
             <div class="modal-header bg-dark text-white">
                 <h5 class="modal-title fw-bold"><i class="fas fa-comment-dots me-2"></i>기능 제안 및 버그 신고</h5>
@@ -530,7 +553,8 @@
             calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
                 locale: 'ko',
-                height: isMobile ? 'auto' : '70vh',
+                // Always auto height to prevent internal scrollbars (use browser scroll)
+                height: 'auto',
                 aspectRatio: isMobile ? 1.2 : 2.2,
                 headerToolbar: {
                     left: 'prev,next',
@@ -543,15 +567,31 @@
                     today: '오늘'
                 },
                 selectable: true,
-                dayMaxEvents: isLandscape ? false : true,
+                // Limit events only on Mobile Portrait (to avoid huge height)
+                // PC & Landscape: Show All (as requested)
+                dayMaxEvents: (mode === 'mobile') ? true : false,
                 events: '/api/reservations',
                 eventTimeFormat: { hour: '2-digit', minute: '2-digit', meridiem: false, hour12: false },
+                // Force block display to remove the "dot" for timed events
+                eventDisplay: 'block',
                 eventContent: isMobile ? function (arg) {
-                    if (arg.view.type === 'listMonth') return undefined;
+                    if (arg.view.type === 'listMonth') {
+                        return { html: `<div class="p-1"><span class="fw-bold">${arg.event.title}</span></div>` };
+                    }
+
                     if (arg.event.title.startsWith('⛔')) {
                         return { html: `<div class="text-center fw-bold text-truncate" style="font-size:0.7rem; color:white;">${arg.event.title}</div>` };
                     }
-                    return { html: '<div class="text-center fw-bold" style="font-size:0.75rem;">예약</div>' };
+
+                    const start = arg.event.start;
+                    const timeLabel = `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}`;
+
+                    return {
+                        html: `
+                        <div class="d-flex justify-content-center align-items-center w-100 h-100" style="font-size:0.75rem; color:white;">
+                            <span class="fw-bold">${timeLabel}</span>
+                        </div>
+                    `};
                 } : undefined,
                 dayCellContent: function (info) {
                     var number = info.dayNumberText.replace('일', '');
@@ -591,10 +631,27 @@
 
             document.getElementById('resDate').value = dateStr;
             const items = dateStr.split('-');
+
             document.getElementById('displayDate').innerText = `${items[0]}년 ${items[1]}월 ${items[2]}일`;
+
+            // Reset Recurring
+            document.getElementById('checkRecurring').checked = false;
+            document.getElementById('recurringOptions').style.display = 'none';
+            document.getElementById('repeatCount').value = '2';
+
             reserveModal.show();
 
         }
+
+        // Toggle Recurring Options
+        document.getElementById('checkRecurring').addEventListener('change', function () {
+            const options = document.getElementById('recurringOptions');
+            if (this.checked) {
+                options.style.display = 'block';
+            } else {
+                options.style.display = 'none';
+            }
+        });
 
         // Submit Logic
         document.getElementById('btnSubmit').addEventListener('click', function () {
@@ -639,7 +696,9 @@
                 purpose: purpose,
                 start: `${selectedDate}T${startTime}:00`,
                 end: `${selectedDate}T${endTime}:00`,
-                signature: signatureData
+                signature: signatureData,
+                repeat_type: document.getElementById('checkRecurring').checked ? 'weekly' : null,
+                repeat_count: document.getElementById('checkRecurring').checked ? parseInt(document.getElementById('repeatCount').value) : 1
             };
 
             fetch('/api/reservations', {
