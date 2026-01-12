@@ -174,6 +174,9 @@ def create_reservation():
     except ValueError:
         return jsonify({'error': '날짜 형식이 올바르지 않습니다.'}), 400
 
+    if start_time < datetime.now():
+        return jsonify({'error': '지난 날짜는 예약할 수 없습니다.'}), 400
+
     # 1. Blacklist Check
     blocked = Blacklist.query.filter_by(phone=phone).first()
     if blocked:
@@ -273,6 +276,10 @@ def my_reservations_api():
 @app.route('/api/reservations/<int:id>/cancel', methods=['POST'])
 def cancel_reservation(id):
     res = Reservation.query.get_or_404(id)
+
+    if res.start_time < datetime.now():
+        return jsonify({'error': '지난 예약은 취소할 수 없습니다.'}), 400
+
     data = request.json
     is_penalty = data.get('is_penalty', False)
 
