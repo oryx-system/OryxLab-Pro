@@ -35,12 +35,6 @@
                     <li class="nav-item"><a class="nav-link fw-medium" href="/my">내 예약</a></li>
                     <li class="nav-item"><a class="nav-link fw-medium" href="/checkin">QR체크인</a></li>
                     <li class="nav-item"><a class="nav-link fw-medium text-danger" href="/admin">관리자</a></li>
-                    <li class="nav-item ms-lg-3">
-                        <div class="form-check form-switch cursor-pointer">
-                            <input class="form-check-input" type="checkbox" id="darkModeToggle">
-                            <label class="form-check-label" for="darkModeToggle"><i class="fas fa-moon"></i></label>
-                        </div>
-                    </li>
                 </ul>
             </div>
         </div>
@@ -60,24 +54,7 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
     <script>
-        // Dark Mode Logic with LocalStorage
-        const toggle = document.getElementById('darkModeToggle');
-        const body = document.body;
-
-        if (localStorage.getItem('mode') === 'dark') {
-            body.classList.add('dark-mode');
-            toggle.checked = true;
-        }
-
-        toggle.addEventListener('change', () => {
-            if (toggle.checked) {
-                body.classList.add('dark-mode');
-                localStorage.setItem('mode', 'dark');
-            } else {
-                body.classList.remove('dark-mode');
-                localStorage.setItem('mode', 'light');
-            }
-        });
+        // Dark Mode Logic Removed as per request
     </script>
     {% block scripts %}{% endblock %}
 </body>

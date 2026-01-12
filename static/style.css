@@ -102,50 +102,12 @@ h6 {
     border-color: var(--primary-color);
 }
 
-/* Dark Mode Overrides */
-.dark-mode {
-    --bg-gradient: linear-gradient(135deg, #1e1e2e 0%, #2d2d44 100%);
-    color: #e2e8f0;
-}
-
-.dark-mode h1,
-.dark-mode h2,
-.dark-mode h3 {
-    color: #fff;
-}
-
-.dark-mode .card,
-.dark-mode .modal-content {
-    background: rgba(45, 45, 68, 0.7);
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #e2e8f0;
-}
-
-.dark-mode .form-control,
-.dark-mode .form-select {
-    background: rgba(30, 30, 46, 0.8);
-    border-color: rgba(255, 255, 255, 0.1);
-    color: #fff;
-}
-
-.dark-mode .form-control:focus {
-    background: rgba(30, 30, 46, 1);
-}
-
-.dark-mode .table {
-    color: #e2e8f0;
-}
-
+/* Dark Mode Removed */
 /* Navbar Blur */
 .navbar-glass {
     background: rgba(255, 255, 255, 0.8);
     backdrop-filter: blur(10px);
     border-bottom: 1px solid rgba(255, 255, 255, 0.3);
-}
-
-.dark-mode .navbar-glass {
-    background: rgba(30, 30, 46, 0.8);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
 }
 
 /* Specific UI Elements */
@@ -158,11 +120,6 @@ h6 {
     background: rgba(255, 255, 255, 0.5);
     border-radius: 8px;
     border: 1px solid rgba(0, 0, 0, 0.1);
-}
-
-.dark-mode .terms-box {
-    background: rgba(0, 0, 0, 0.2);
-    border-color: rgba(255, 255, 255, 0.1);
 }
 
 /* Notice Banner Floating */
@@ -241,11 +198,6 @@ h6 {
         /* Smaller weekday names */
         padding: 8px 0 !important;
     }
-}
-
-.dark-mode .notice-banner {
-    background: rgba(26, 62, 92, 0.8);
-    color: #bbdefb;
 }
 
 /* Calendar Customization */
@@ -336,45 +288,49 @@ h6 {
 @media screen and (max-height: 500px) and (orientation: landscape) {
     .container.py-5.mt-5 {
         padding-top: 1rem !important;
-        margin-top: 3.5rem !important; /* Adjust for navbar */
+        margin-top: 3.5rem !important;
+        /* Adjust for navbar */
         padding-bottom: 1rem !important;
     }
-    
+
     .navbar-glass {
         padding-top: 0.2rem;
         padding-bottom: 0.2rem;
     }
-    
+
     /* Hide floating notice in landscape to save space */
     .notice-banner {
         display: none !important;
     }
-    
+
     /* Calendar Optimization for Landscape */
     .fc-toolbar-title {
         font-size: 1.2rem !important;
     }
-    
+
     .fc-header-toolbar {
         margin-bottom: 0.5rem !important;
     }
-    
+
     .fc-daygrid-day-frame {
-        min-height: 40px !important; /* Compact height */
+        min-height: 40px !important;
+        /* Compact height */
     }
-    
+
     .fc-daygrid-day-number {
         font-size: 0.8rem;
         padding: 2px !important;
     }
 
     footer {
-        display: none; /* Hide footer to maximize view */
+        display: none;
+        /* Hide footer to maximize view */
     }
 }
 
 /* --- Mobile Portrait Refinement --- */
 @media (max-width: 768px) {
+
     /* Existing overrides + enhancements */
     .container {
         padding-left: 15px;
@@ -385,16 +341,19 @@ h6 {
     .modal-dialog {
         margin: 0.5rem;
     }
-    
+
     .modal-content {
         border-radius: 20px;
     }
-    
+
     /* Larger Touch Targets */
-    .btn, .form-control, .form-select {
-        min-height: 44px; /* Apple Human Interface Guidelines recommended */
+    .btn,
+    .form-control,
+    .form-select {
+        min-height: 44px;
+        /* Apple Human Interface Guidelines recommended */
     }
-    
+
     /* Notice Banner Compact */
     .notice-banner {
         padding: 10px 15px;

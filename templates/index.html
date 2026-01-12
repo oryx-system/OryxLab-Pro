@@ -229,12 +229,16 @@
         var currentMode = getMode(); // 'mobile' or 'pc'
 
         function getMode() {
+            // Check orientation and width
+            const isLandscape = window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches;
+            if (isLandscape) return 'landscape';
             return window.innerWidth < 768 ? 'mobile' : 'pc';
         }
 
         function initCalendar() {
             var mode = getMode();
             var isMobile = (mode === 'mobile');
+            var isLandscape = (mode === 'landscape');
 
             if (calendar) {
                 calendar.destroy();
@@ -259,7 +263,8 @@
                     today: '오늘'
                 },
                 selectable: true,
-                dayMaxEvents: true,
+                // Disable 'more' popover in landscape/mobile to force showing event
+                dayMaxEvents: isLandscape ? false : true,
                 events: '/api/reservations',
                 eventTimeFormat: { hour: '2-digit', minute: '2-digit', meridiem: false, hour12: false },
 
@@ -273,10 +278,10 @@
                     return { html: '<div class="text-center fw-bold" style="font-size:0.75rem;">예약</div>' };
                 } : undefined,
 
-                dayCellContent: isMobile ? function (info) {
+                dayCellContent: function (info) {
                     var number = info.dayNumberText.replace('일', '');
                     return { html: number };
-                } : undefined,
+                },
 
                 dateClick: function (info) {
                     selectedDate = info.dateStr;
