@@ -18,8 +18,9 @@
                     <label for="myPhone">전화번호</label>
                 </div>
                 <div class="form-floating mb-3">
-                    <input type="password" id="myPassword" class="form-control" placeholder="비밀번호">
-                    <label for="myPassword">예약 비밀번호</label>
+                    <input type="password" id="myPassword" class="form-control" placeholder="비밀번호" inputmode="numeric"
+                        pattern="[0-9]*" maxlength="4">
+                    <label for="myPassword">예약 비밀번호 (숫자 4자리)</label>
                 </div>
                 <div class="d-grid">
                     <button class="btn btn-primary btn-lg" id="btnLookUp">조회하기</button>

@@ -99,10 +99,10 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">비밀번호</label>
-                        <input type="password" class="form-control" id="resPassword" required
-                            placeholder="예약 확인용 비밀번호 (4자리 이상)">
+                        <input type="password" class="form-control" id="resPassword" required placeholder="숫자 4자리"
+                            inputmode="numeric" pattern="[0-9]*" maxlength="4">
                         <div class="form-text small" style="color: #6c757d;">
-                            ※ 나중에 예약을 확인하거나 취소할 때 사용됩니다.
+                            ※ 나중에 예약을 확인하거나 취소할 때 사용됩니다. (숫자 4자리)
                         </div>
                     </div>
 
@@ -326,6 +326,7 @@
             const agreed = document.getElementById('agreeTerms').checked;
 
             if (!name || !phone || !password) { alert('필수 정보를 모두 입력해주세요.'); return; }
+            if (password.length !== 4 || isNaN(password)) { alert('비밀번호는 숫자 4자리여야 합니다.'); return; }
             if (startTime >= endTime) { alert('종료 시간은 시작 시간보다 뒤여야 합니다.'); return; }
             if (!agreed) { alert('약관에 동의해주세요.'); return; }
             if (userCaptcha !== captchaAns) { alert('자동 예약 방지 정답이 틀렸습니다.'); return; }
