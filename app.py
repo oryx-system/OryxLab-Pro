@@ -2,13 +2,16 @@ from flask import Flask, render_template, request, jsonify, redirect, url_for, s
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime, timedelta
 import os
-import pandas as pd
+import openpyxl
 import io
 from ics import Calendar, Event
 import shutil
+from dotenv import load_dotenv
+
+load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = 'secr3t_k3y_f0r_s3ss10n_m4n4g3m3nt' # Change for production
+app.secret_key = os.environ.get('SECRET_KEY', 'default-dev-key-change-this-in-prod')
 
 # Absolute path for DB
 basedir = os.path.abspath(os.path.dirname(__file__))
@@ -358,18 +361,34 @@ def download_excel():
     if not data:
         return "데이터가 없습니다."
         
-    df = pd.DataFrame(data)
-    
     # Ensure correct column order
-    cols = ['ID', '이름', '전화번호', '주소', '시작시간', '종료시간', '상태', '관리자 메모']
-    df = df[cols]
+    # cols = ['ID', '이름', '전화번호', '주소', '시작시간', '종료시간', '상태', '관리자 메모']
 
     output = io.BytesIO()
-    # encoding='utf-8-sig' for proper Korean display in Excel (CSV export style, but using to_excel here)
-    # Pandas default Excel engine usually handles unicode well.
-    with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        df.to_excel(writer, index=False, sheet_name='예약내역')
+    
+    # Use openpyxl directly instead of pandas
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = '예약내역'
+    
+    # Headers
+    headers = ['ID', '이름', '전화번호', '주소', '시작시간', '종료시간', '상태', '관리자 메모']
+    ws.append(headers)
+    
+    for r in reservations:
+        row = [
+            r.id,
+            r.name,
+            r.phone,
+            r.address,
+            r.start_time,
+            r.end_time,
+            status_map.get(r.status, r.status),
+            r.admin_memo
+        ]
+        ws.append(row)
         
+    wb.save(output)
     output.seek(0)
     
     filename = f"reservation_list_{datetime.now().strftime('%Y%m%d')}.xlsx"
