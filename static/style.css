@@ -342,8 +342,19 @@ h6 {
         margin: 0.5rem;
     }
 
-    .modal-content {
-        border-radius: 20px;
+    /* Reduce Top Spacing on Mobile */
+    .container.py-4.mt-5 {
+        margin-top: 3.5rem !important;
+        /* Just enough for navbar */
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+    }
+
+    .notice-banner {
+        margin-bottom: 1rem !important;
+        /* Reduce gap */
+        padding: 10px 15px;
+        font-size: 0.9rem;
     }
 
     /* Larger Touch Targets */

@@ -16,76 +16,48 @@
     </div>
 </div>
 
-<!-- ... (Rest of HTML) ... -->
+<!-- Floating Feedback Button -->
+<button class="btn btn-dark rounded-circle shadow-lg position-fixed bottom-0 end-0 m-4"
+    style="width: 60px; height: 60px; z-index: 1050;" title="버그 제보 및 건의사항" data-bs-toggle="modal"
+    data-bs-target="#feedbackModal">
+    <i class="fas fa-comment-dots fa-lg"></i>
+</button>
 
-<script>
-    document.addEventListener('DOMContentLoaded', function () {
-        // ... (Existing Code) ...
 
-        // Secret Admin Access: Click Notice Icon 5 times in 10 seconds
-        const noticeIcon = document.getElementById('noticeIcon');
-        let clickCount = 0;
-        let clickTimer = null;
-
-        noticeIcon.addEventListener('click', function () {
-            clickCount++;
-
-            // Visual Feedback
-            this.style.transform = 'scale(0.9)';
-            setTimeout(() => { this.style.transform = 'scale(1)'; }, 100);
-
-            if (clickCount === 1) {
-                // Start 10s timer on first click
-                clickTimer = setTimeout(() => {
-                    clickCount = 0; // Reset after 10s
-                }, 10000);
-            }
-
-            if (clickCount >= 5) {
-                clearTimeout(clickTimer);
-                clickCount = 0;
-                // Redirect to Admin
-                if (confirm('관리자 페이지로 이동하시겠습니까?')) {
-                    window.location.href = '/admin';
-                }
-            }
-        });
-
-        // ... (Rest of Scripts) ...
-    });
-</script>
-
-<div class="card p-4 border-0">
-    <div id='calendar'></div>
+<div class="row gx-5">
+    <!-- Full Width Calendar -->
+    <div class="col-lg-12">
+        <div class="card shadow-lg border-0 h-100">
+            <div class="card-body p-0">
+                <div id="calendar" class="p-3"></div>
+            </div>
+        </div>
+    </div>
 </div>
 
-<!-- Premium Reservation Modal -->
-<div class="modal fade" id="reserveModal" tabindex="-1">
+<!-- Reservation Modal -->
+<div class="modal fade" id="reserveModal" tabindex="-1" aria-hidden="true">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content overflow-hidden">
-            <div class="modal-header border-0 bg-primary bg-opacity-10">
-                <h5 class="modal-title fw-bold text-primary"><i class="fas fa-calendar-check me-2"></i>예약하기</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white border-0">
+                <h5 class="modal-title fw-bold">
+                    <i class="fas fa-calendar-check me-2"></i>예약하기
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"
+                    aria-label="Close"></button>
             </div>
             <div class="modal-body p-4">
-                <form id="reserveForm">
-                    <div class="mb-4 text-center">
-                        <h2 class="fw-bold mb-0" id="displayDate"></h2>
+                <form id="reservationForm">
+                    <!-- Date & Time -->
+                    <div class="bg-light rounded-3 p-3 mb-4 text-center">
+                        <h4 class="fw-bold text-primary mb-3" id="displayDate"></h4>
                         <input type="hidden" id="resDate">
-                    </div>
-
-                    <div class="row g-3 mb-4">
-                        <div class="col-6">
-                            <label class="form-label fw-bold small text-uppercase text-muted">시작 시간</label>
-                            <select class="form-select form-select-lg" id="resStartTime" required>
-                                <!-- JS Populated -->
-                            </select>
-                        </div>
-                        <div class="col-6">
-                            <label class="form-label fw-bold small text-uppercase text-muted">종료 시간</label>
-                            <select class="form-select form-select-lg" id="resEndTime" required>
-                                <!-- JS Populated -->
-                            </select>
+                        <div class="d-flex justify-content-center align-items-center gap-2">
+                            <select class="form-select form-select-lg fw-bold text-center border-0 shadow-sm"
+                                id="resStartTime" style="width: 120px;"></select>
+                            <span class="text-muted">~</span>
+                            <select class="form-select form-select-lg fw-bold text-center border-0 shadow-sm"
+                                id="resEndTime" style="width: 120px;"></select>
                         </div>
                     </div>
 
@@ -97,6 +69,7 @@
                         <label class="form-label fw-bold">전화번호</label>
                         <input type="tel" class="form-control" id="resPhone" required placeholder="예: 010-1234-5678">
                     </div>
+
                     <div class="mb-3">
                         <label class="form-label fw-bold">비밀번호</label>
                         <input type="password" class="form-control" id="resPassword" required placeholder="숫자 4자리"
@@ -104,6 +77,11 @@
                         <div class="form-text small" style="color: #6c757d;">
                             ※ 나중에 예약을 확인하거나 취소할 때 사용됩니다. (숫자 4자리)
                         </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">사용 목적</label>
+                        <input type="text" class="form-control" id="resPurpose" required
+                            placeholder="예: 독서 모임, 코딩 수업, 인문학 강의 등">
                     </div>
 
                     <div class="form-check mb-4">
@@ -117,7 +95,8 @@
                             <p><strong>1. 이용 시간 준수</strong><br>예약 시간 내에 입/퇴실을 완료해야 합니다.</p>
                             <p><strong>2. 정리 정돈</strong><br>퇴실 시 사용한 물품을 제자리에 정리합니다.</p>
                             <p><strong>3. 취소 정책</strong><br>당일 취소 및 노쇼(No-Show) 발생 시 30일간 예약이 제한됩니다.</p>
-                            <p><strong>4. 책임</strong><br>기물 파손 시 배상 책임이 있습니다.</p>
+                            <p><strong>4. 입실 체크</strong><br>입실 시 반드시 QR 체크인(또는 스마트 체크인)을 진행해야 합니다.</p>
+                            <p><strong>5. 책임</strong><br>기물 파손 시 배상 책임이 있습니다.</p>
                             <p>스크롤을 끝까지 내려야 동의 버튼이 활성화됩니다.</p>
                             <br><br><br><br>
                             <p class="text-center text-muted"><i class="fas fa-check-circle me-1"></i>약관 확인 완료</p>
@@ -156,7 +135,7 @@
                         style="filter: drop-shadow(0 5px 15px rgba(25, 135, 84, 0.4));"></i>
                 </div>
                 <h3 class="fw-bold mb-2">예약 완료!</h3>
-                <p class="text-muted mb-4">즐거운 시간 되세요.</p>
+                <p class="text-muted mb-4">입실 시 <strong>QR 체크인</strong>을 꼭 진행해주세요.</p>
                 <div class="d-grid gap-3">
                     <a href="#" class="btn btn-primary btn-lg shadow" id="btnDownloadIcs">
                         <i class="fas fa-calendar-alt me-2"></i> 내 캘린더에 저장 (.ics)
@@ -164,6 +143,26 @@
                     <button type="button" class="btn btn-outline-secondary rounded-pill"
                         data-bs-dismiss="modal">닫기</button>
                 </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Feedback Modal -->
+<div class="modal fade" id="feedbackModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold"><i class="fas fa-comment-dots me-2"></i>기능 제안 및 버그 신고</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small">서비스 이용 중 불편한 점이나 추가되었으면 하는 기능이 있다면 자유롭게 남겨주세요.</p>
+                <textarea class="form-control" id="feedbackMsg" rows="5" placeholder="내용을 입력해주세요..."></textarea>
+            </div>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-light rounded-pill" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-dark rounded-pill px-4" id="btnSendFeedback">보내기</button>
             </div>
         </div>
     </div>
@@ -180,6 +179,31 @@
         var reserveModal = new bootstrap.Modal(document.getElementById('reserveModal'));
         var successModal = new bootstrap.Modal(document.getElementById('successModal'));
         let selectedDate = null;
+
+        // Secret Admin Access (5 clicks in 10s)
+        let clickCount = 0;
+        let clickTimer = null;
+        const noticeIcon = document.getElementById('noticeIcon');
+
+        if (noticeIcon) {
+            noticeIcon.addEventListener('click', function () {
+                clickCount++;
+
+                if (clickCount === 1) {
+                    // Start 10s timer on first click
+                    clickTimer = setTimeout(() => {
+                        clickCount = 0; // Reset after 10s
+                    }, 10000);
+                }
+
+                if (clickCount >= 5) {
+                    clearTimeout(clickTimer);
+                    clickCount = 0;
+                    // Stealth Redirect
+                    window.location.href = '/dev-login';
+                }
+            });
+        }
 
         // Populate Time Dropdowns (09:00 to 22:00)
         function populateTimeOptions() {
@@ -275,7 +299,15 @@
                     if (arg.view.type === 'listMonth') {
                         return undefined;
                     }
-                    // Mobile DayGrid: Show "예약" text only
+
+                    // Special Handling for Blocked Events
+                    if (arg.event.title.startsWith('⛔')) {
+                        return {
+                            html: `<div class="text-center fw-bold text-truncate" style="font-size:0.7rem; color:white;">${arg.event.title}</div>`
+                        };
+                    }
+
+                    // Standard User Reservation: Show "예약" text only on mobile grid
                     return { html: '<div class="text-center fw-bold" style="font-size:0.75rem;">예약</div>' };
                 } : undefined,
 
@@ -330,12 +362,13 @@
             const name = document.getElementById('resName').value;
             const phone = document.getElementById('resPhone').value;
             const password = document.getElementById('resPassword').value;
+            const purpose = document.getElementById('resPurpose').value;
             const startTime = document.getElementById('resStartTime').value;
             const endTime = document.getElementById('resEndTime').value;
             const userCaptcha = parseInt(document.getElementById('captchaAnswer').value);
             const agreed = document.getElementById('agreeTerms').checked;
 
-            if (!name || !phone || !password) { showAlert('필수 정보를 모두 입력해주세요.'); return; }
+            if (!name || !phone || !password || !purpose) { showAlert('필수 정보를 모두 입력해주세요.'); return; }
             if (password.length !== 4 || isNaN(password)) { showAlert('비밀번호는 숫자 4자리여야 합니다.'); return; }
             if (startTime >= endTime) { showAlert('종료 시간은 시작 시간보다 뒤여야 합니다.'); return; }
             if (!agreed) { showAlert('약관에 동의해주세요.'); return; }
@@ -355,6 +388,7 @@
                 name: name,
                 phone: phone,
                 password: password,
+                purpose: purpose,
                 start: `${selectedDate}T${startTime}:00`,
                 end: `${selectedDate}T${endTime}:00`
             };
@@ -380,6 +414,37 @@
                 })
                 .catch(err => {
                     console.error(err);
+                    showAlert('서버 통신 오류');
+                });
+        });
+
+        // Feedback Logic
+        document.getElementById('btnSendFeedback').addEventListener('click', function () {
+            const msg = document.getElementById('feedbackMsg').value;
+            if (!msg.trim()) { showAlert('내용을 입력해주세요.'); return; }
+
+            // Disable button
+            this.disabled = true;
+
+            fetch('/api/feedback', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: msg })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    this.disabled = false;
+                    if (data.success) {
+                        const modal = bootstrap.Modal.getInstance(document.getElementById('feedbackModal'));
+                        modal.hide();
+                        document.getElementById('feedbackMsg').value = '';
+                        showAlert('소중한 의견 감사합니다!');
+                    } else {
+                        showAlert('전송 실패: ' + data.error);
+                    }
+                })
+                .catch(() => {
+                    this.disabled = false;
                     showAlert('서버 통신 오류');
                 });
         });

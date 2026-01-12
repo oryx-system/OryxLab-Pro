@@ -1,0 +1,422 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="row align-items-center mb-4">
+    <div class="col">
+        <h2 class="fw-bold text-danger"><i class="fas fa-terminal me-2"></i>개발자 콘솔</h2>
+        <p class="text-muted mb-0">시스템 상태 및 로그 분석</p>
+    </div>
+    <div class="col-auto">
+        <div class="d-flex align-items-center gap-2">
+            <a href="/admin" class="btn btn-outline-primary"><i class="fas fa-user-shield me-2"></i>관리자 페이지</a>
+            <div class="vr"></div>
+            <a href="/dev/download_logs" class="btn btn-outline-dark"><i class="fas fa-download me-2"></i>로그 DB 다운로드</a>
+            <a href="/logout" class="btn btn-outline-danger">로그아웃</a>
+        </div>
+    </div>
+</div>
+
+<!-- Status Cards -->
+<div class="row g-4 mb-4">
+    <!-- Maintenance Status -->
+    <div class="col-md-6 col-lg-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body d-flex align-items-center">
+                <div class="flex-shrink-0">
+                    <div
+                        class="rounded-circle p-3 {% if maintenance_mode %}bg-danger bg-opacity-10 text-danger{% else %}bg-success bg-opacity-10 text-success{% endif %}">
+                        <i class="fas fa-server fa-lg"></i>
+                    </div>
+                </div>
+                <div class="flex-grow-1 ms-3">
+                    <h6 class="text-muted text-uppercase small fw-bold mb-1">유지보수 모드 (서버 점검)</h6>
+                    <div class="d-flex align-items-center justify-content-between">
+                        <h4 class="mb-0 fw-bold" id="maintenanceLabel">
+                            {% if maintenance_mode %}활성{% else %}비활성{% endif %}
+                        </h4>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="maintenanceSwitch"
+                                style="transform: scale(1.4);" {% if maintenance_mode %}checked{% endif %}>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Integrity Status -->
+    <div class="col-md-6 col-lg-8">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-2">
+                    <h6 class="text-muted text-uppercase small fw-bold mb-0">시스템 무결성 상태</h6>
+                    <button class="btn btn-sm btn-info text-white rounded-pill px-3" id="btnIntegrityCheck">
+                        <i class="fas fa-stethoscope me-1"></i>검사 실행
+                    </button>
+                </div>
+                <div id="integrityResult" class="bg-light rounded p-2 small text-muted">
+                    <i class="fas fa-info-circle me-1"></i>'검사 실행'을 클릭하여 데이터 불일치 항목을 확인하세요.
+                </div>
+                <button class="btn btn-sm btn-warning mt-2 w-100 d-none animate__animated animate__fadeIn"
+                    id="btnIntegrityFix">
+                    <i class="fas fa-magic me-1"></i>문제 자동 해결
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<!-- Tabs -->
+<ul class="nav nav-pills mb-4 gap-2" id="devTabs" role="tablist">
+    <li class="nav-item" role="presentation">
+        <button class="nav-link active fw-bold rounded-pill" id="access-logs-tab" data-bs-toggle="tab"
+            data-bs-target="#access-logs" type="button">
+            <i class="fas fa-network-wired me-2"></i>접속 로그
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link fw-bold rounded-pill" id="admin-logs-tab" data-bs-toggle="tab"
+            data-bs-target="#admin-logs" type="button">
+            <i class="fas fa-users-cog me-2"></i>관리자 활동
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link fw-bold rounded-pill" id="error-logs-tab" data-bs-toggle="tab"
+            data-bs-target="#error-logs" type="button">
+            <i class="fas fa-exclamation-triangle me-2"></i>오류 로그
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link fw-bold rounded-pill" id="feedback-logs-tab" data-bs-toggle="tab"
+            data-bs-target="#feedback-logs" type="button">
+            <i class="fas fa-comment-dots me-2"></i>피드백
+        </button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link fw-bold rounded-pill" id="raw-data-tab" data-bs-toggle="tab" data-bs-target="#raw-data"
+            type="button">
+            <i class="fas fa-database me-2"></i>원본 데이터
+        </button>
+    </li>
+</ul>
+
+<div class="tab-content" id="devTabsContent">
+
+    <!-- Access Logs -->
+    <div class="tab-pane fade show active" id="access-logs" role="tabpanel">
+        <div class="card shadow border-0">
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 600px;">
+                    <table class="table table-hover table-striped mb-0 align-middle">
+                        <thead class="table-dark sticky-top">
+                            <tr>
+                                <th>시간</th>
+                                <th>메소드</th>
+                                <th>경로</th>
+                                <th>아이피</th>
+                                <th>유저 에이전트</th>
+                            </tr>
+                        </thead>
+                        <tbody class="font-monospace small">
+                            {% for log in access_logs %}
+                            <tr>
+                                <td class="text-nowrap">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                <td><span class="badge bg-secondary">{{ log.method }}</span></td>
+                                <td class="text-primary">{{ log.path }}</td>
+                                <td>{{ log.ip_address }}</td>
+                                <td class="text-truncate" style="max-width: 300px;" title="{{ log.user_agent }}">
+                                    {{ log.user_agent }}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Logs -->
+    <div class="tab-pane fade" id="admin-logs" role="tabpanel">
+        <div class="card shadow border-0">
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 600px;">
+                    <table class="table table-hover mb-0 align-middle">
+                        <thead class="bg-warning bg-opacity-25 sticky-top">
+                            <tr>
+                                <th>시간</th>
+                                <th>유형</th>
+                                <th>활동 내용</th>
+                                <th>아이피</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for log in admin_logs %}
+                            <tr>
+                                <td class="text-nowrap">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
+                                <td>
+                                    {% if log.admin_type == 'dev' %}
+                                    <span class="badge bg-danger rounded-pill">DEV</span>
+                                    {% elif log.admin_type == 'feedback' %}
+                                    <span class="badge bg-success rounded-pill">FEEDBACK</span>
+                                    {% else %}
+                                    <span class="badge bg-primary rounded-pill">ADMIN</span>
+                                    {% endif %}
+                                </td>
+                                <td class="fw-bold">{{ log.action }}</td>
+                                <td class="font-monospace text-muted">{{ log.ip_address }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Error Logs -->
+    <div class="tab-pane fade" id="error-logs" role="tabpanel">
+        <!-- ... existing error logs ... -->
+        <div class="card shadow border-0">
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% for log in error_logs %}
+                    <div class="list-group-item p-4 border-bottom">
+                        <div class="d-flex w-100 justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0 text-danger fw-bold"><i class="fas fa-bug me-2"></i>시스템 오류</h6>
+                            <small class="text-muted font-monospace">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S')
+                                }}</small>
+                        </div>
+                        <div class="bg-light p-3 rounded mb-3 border text-break font-monospace small">
+                            {{ log.error_msg }}
+                        </div>
+                        <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse"
+                            data-bs-target="#trace-{{ log.id }}">
+                            <i class="fas fa-code me-1"></i>추적 기록 보기
+                        </button>
+                        <div class="collapse mt-3" id="trace-{{ log.id }}">
+                            <div class="card card-body bg-dark text-white font-monospace small"
+                                style="white-space: pre-wrap; font-size: 0.75rem;">{{ log.traceback }}</div>
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5 text-muted">
+                        <i class="fas fa-check-circle fa-3x mb-3 text-success"></i>
+                        <p>최근 기록된 오류가 없습니다.</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Feedback Tab -->
+    <div class="tab-pane fade" id="feedback-logs" role="tabpanel">
+        <div class="card shadow border-0">
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% set feedback_found = false %}
+                    {% for log in admin_logs %}
+                    {% if log.admin_type == 'feedback' %}
+                    {% set feedback_found = true %}
+                    <div class="list-group-item p-4 border-bottom">
+                        <div class="d-flex w-100 justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0 text-info fw-bold"><i class="fas fa-comment ms-1 me-2"></i>사용자 피드백
+                            </h6>
+                            <small class="text-muted font-monospace">{{ log.timestamp.strftime('%Y-%m-%d %H:%M')
+                                }}</small>
+                        </div>
+                        <div class="bg-light p-3 rounded text-break">
+                            {{ log.action }}
+                        </div>
+                        <div class="mt-2 text-end text-muted small">IP: {{ log.ip_address }}</div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
+
+                    {% if not feedback_found %}
+                    <div class="text-center py-5 text-muted">
+                        <i class="fas fa-inbox fa-3x mb-3 opacity-50"></i>
+                        <p>새로운 피드백이 없습니다.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Raw Data -->
+    <div class="tab-pane fade" id="raw-data" role="tabpanel">
+        <div class="card shadow border-0">
+            <div class="card-header bg-white">
+                <h6 class="fw-bold mb-0">예약 데이터 (원본 조회)</h6>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 600px;">
+                    <table class="table table-sm table-bordered mb-0 small">
+                        <thead class="table-light sticky-top">
+                            <tr>
+                                <th>ID</th>
+                                <th>상태</th>
+                                <th>시작시간</th>
+                                <th>종료시간</th>
+                                <th>이름</th>
+                                <th>전화번호</th>
+                                <th>PW</th>
+                                <th>생성일</th>
+                                <th>관리</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in reservations %}
+                            <tr>
+                                <td>{{ r.id }}</td>
+                                <td>
+                                    {% if status_map %}
+                                    {{ status_map.get(r.status, r.status) }}
+                                    {% else %}
+                                    {{ r.status }}
+                                    {% endif %}
+                                </td>
+                                <td>{{ r.start_time }}</td>
+                                <td>{{ r.end_time }}</td>
+                                <td>{{ r.name }}</td>
+                                <td>{{ r.phone }}</td>
+                                <td>{{ r.password }}</td>
+                                <td>{{ r.created_at }}</td>
+                                <td>
+                                    <button class="btn btn-sm btn-outline-danger btn-delete-res" data-id="{{ r.id }}">
+                                        <i class="fas fa-trash-alt"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+
+{% endblock %}
+
+{% block scripts %}
+<script>
+    // Maintenance Toggle
+    const mSwitch = document.getElementById('maintenanceSwitch');
+    const mLabel = document.getElementById('maintenanceLabel');
+
+    if (mSwitch) {
+        mSwitch.addEventListener('change', function () {
+            const isChecked = this.checked;
+            fetch('/dev/toggle_maintenance', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        if (data.mode === 'true') {
+                            mLabel.innerText = "활성";
+                            mLabel.closest('.card-body').querySelector('.rounded-circle').className = "rounded-circle p-3 bg-danger bg-opacity-10 text-danger";
+                            showAlert('유지보수 모드가 활성화되었습니다.');
+                        } else {
+                            mLabel.innerText = "비활성";
+                            mLabel.closest('.card-body').querySelector('.rounded-circle').className = "rounded-circle p-3 bg-success bg-opacity-10 text-success";
+                            showAlert('유지보수 모드가 비활성화되었습니다.');
+                        }
+                    } else {
+                        mSwitch.checked = !isChecked; // Revert
+                        showAlert('상태 변경 실패');
+                    }
+                })
+                .catch(() => {
+                    mSwitch.checked = !isChecked;
+                    showAlert('서버 통신 오류');
+                });
+        });
+    }
+
+    // Integrity Check
+    const btnCheck = document.getElementById('btnIntegrityCheck');
+    const btnFix = document.getElementById('btnIntegrityFix');
+    const resultBox = document.getElementById('integrityResult');
+
+    if (btnCheck) {
+        btnCheck.addEventListener('click', function () {
+            btnCheck.disabled = true;
+            btnCheck.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>검사 중...';
+
+            fetch('/dev/integrity_check', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    btnCheck.disabled = false;
+                    btnCheck.innerHTML = '<i class="fas fa-search me-1"></i>검사 실행';
+
+                    if (data.success) {
+                        if (data.issues_count > 0) {
+                            resultBox.className = "alert alert-danger mb-0 small";
+                            let html = `<strong><i class="fas fa-exclamation-circle me-1"></i>${data.issues_count}건의 문제 발견:</strong><ul class="mb-0 ps-3 mt-1">`;
+                            data.report.forEach(line => html += `<li>${line}</li>`);
+                            html += `</ul>`;
+                            resultBox.innerHTML = html;
+                            btnFix.classList.remove('d-none');
+                        } else {
+                            resultBox.className = "alert alert-success mb-0 small";
+                            resultBox.innerHTML = '<strong><i class="fas fa-check-circle me-1"></i>시스템 정상</strong><br>무결성 문제가 발견되지 않았습니다.';
+                            btnFix.classList.add('d-none');
+                        }
+                    }
+                })
+                .catch(err => {
+                    btnCheck.disabled = false;
+                    btnCheck.innerHTML = '<i class="fas fa-search me-1"></i>검사 실행';
+                    showAlert('검사 중 오류 발생');
+                });
+        });
+    }
+
+    // Integrity Fix
+    if (btnFix) {
+        btnFix.addEventListener('click', function () {
+            if (!confirm('발견된 문제를 자동으로 수정하시겠습니까?\n(과거 예약 -> 종료 상태로 변경)')) return;
+
+            btnFix.disabled = true;
+            fetch('/dev/integrity_fix', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    btnFix.disabled = false;
+                    if (data.success) {
+                        showAlert(`${data.fixed_count}건이 수정되었습니다.`, function () {
+                            if (btnCheck) btnCheck.click(); // Re-run check
+                        });
+                    }
+                });
+        });
+    }
+
+    // Reservation Delete (Event Delegation)
+    document.addEventListener('click', function (e) {
+        const btn = e.target.closest('.btn-delete-res');
+        if (!btn) return;
+
+        const id = btn.getAttribute('data-id');
+        if (!confirm(`정말 예약 ID ${id}번을 영구 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) return;
+
+        // Use closest to find the row to remove
+        const row = btn.closest('tr');
+
+        fetch(`/dev/reservations/${id}/delete`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    if (row) row.remove();
+                    showAlert('삭제되었습니다.');
+                } else {
+                    showAlert('삭제 실패: ' + (data.error || 'Unknown'));
+                }
+            })
+            .catch(err => showAlert('서버 통신 오류'));
+    });
+</script>
+{% endblock %}

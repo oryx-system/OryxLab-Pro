@@ -6,6 +6,9 @@
         <h2 class="fw-bold"><i class="fas fa-cogs me-2"></i>관리자 대시보드</h2>
     </div>
     <div class="col-auto">
+        <button class="btn btn-outline-dark me-2" data-bs-toggle="modal" data-bs-target="#passwordModal">
+            <i class="fas fa-key me-1"></i>비밀번호 변경
+        </button>
         <a href="/logout" class="btn btn-outline-danger">로그아웃</a>
     </div>
 </div>
@@ -18,6 +21,10 @@
     <li class="nav-item" role="presentation">
         <button class="nav-link fw-bold" id="settings-tab" data-bs-toggle="tab" data-bs-target="#settings"
             type="button">환경 설정</button>
+    </li>
+    <li class="nav-item" role="presentation">
+        <button class="nav-link fw-bold" id="feedback-tab" data-bs-toggle="tab" data-bs-target="#feedback"
+            type="button">사용자 피드백</button>
     </li>
     <li class="nav-item" role="presentation">
         <button class="nav-link fw-bold" id="backup-tab" data-bs-toggle="tab" data-bs-target="#backup" type="button">백업
@@ -93,6 +100,60 @@
 
     <!-- Settings Tab -->
     <div class="tab-pane fade" id="settings" role="tabpanel">
+        <!-- Reservation Control Card -->
+        <div class="card shadow border-danger mb-4" style="max-width: 800px; margin: 0 auto;">
+            <div class="card-header bg-danger text-white">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-hand-paper me-2"></i>예약 기능 제어 (비상)</h5>
+            </div>
+            <div class="card-body">
+                <div class="d-flex align-items-center justify-content-between mb-3">
+                    <div>
+                        <h6 class="fw-bold mb-1">예약 일시 중지</h6>
+                        <p class="text-muted small mb-0">활성화 시 모든 신규 예약이 차단되며, 설정한 사유가 공지사항에 표시됩니다.</p>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="pauseSwitch" style="transform: scale(1.5);"
+                            {% if settings.reservation_paused %}checked{% endif %}>
+                    </div>
+                </div>
+                <div class="collapse {% if settings.reservation_paused %}show{% endif %}" id="pauseReasonArea">
+                    <div class="alert alert-warning border-0 mb-3">
+                        <label class="form-label fw-bold">중지 범위 선택</label>
+                        <div class="d-flex gap-3 mb-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="pauseMode" id="pauseAll" value="all"
+                                    {% if not settings.pause_mode or settings.pause_mode=='all' %}checked{% endif %}>
+                                <label class="form-check-label" for="pauseAll">전체 중지 (지금부터 계속)</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="pauseMode" id="pausePartial"
+                                    value="partial" {% if settings.pause_mode=='partial' %}checked{% endif %}>
+                                <label class="form-check-label" for="pausePartial">특정 기간 중지</label>
+                            </div>
+                        </div>
+
+                        <div id="dateRangeArea"
+                            class="mb-3 {% if settings.pause_mode != 'partial' %}d-none{% endif %} bg-white p-2 rounded">
+                            <label class="form-label small text-muted">중지 기간 설정 (최대 10개)</label>
+                            <div id="rangesContainer">
+                                <!-- Dynamic Inputs will be added here -->
+                            </div>
+                            <button class="btn btn-sm btn-outline-secondary w-100 mt-2" id="addRangeBtn">
+                                <i class="fas fa-plus me-1"></i>기간 추가하기
+                            </button>
+                        </div>
+
+                        <label class="form-label fw-bold">중지 사유 (공지 표시)</label>
+                        <input type="text" class="form-control" id="pauseReason" placeholder="예: 내부 리모델링 공사"
+                            value="{{ settings.pause_reason or '' }}">
+                    </div>
+                    <div class="text-end mt-2">
+                        <button class="btn btn-sm btn-danger" id="btnApplyPause">설정 적용</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="card shadow" style="max-width: 800px; margin: 0 auto;">
             <div class="card-body p-4">
                 <h5 class="fw-bold mb-4">공지 및 시설 정보 설정</h5>
@@ -127,10 +188,42 @@
                         <img src="/admin/qr_code" alt="Check-in QR Code" class="img-fluid" style="max-width: 200px;">
                     </div>
                     <div>
-                        <a href="/admin/qr_code" download="checkin_qrcode.png" class="btn btn-outline-dark btn-sm">
-                            <i class="fas fa-download me-1"></i>이미지 다운로드
+                        <a href="/admin/download_qr_poster" class="btn btn-primary">
+                            <i class="fas fa-print me-1"></i>A4 포스터 다운로드 (인쇄용)
                         </a>
                     </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Feedback Tab -->
+    <div class="tab-pane fade" id="feedback" role="tabpanel">
+        <div class="card shadow">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-comment-dots me-2 text-info"></i>사용자 피드백 목록</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% if feedbacks %}
+                    {% for f in feedbacks %}
+                    <div class="list-group-item p-4 border-bottom">
+                        <div class="d-flex w-100 justify-content-between align-items-center mb-2">
+                            <h6 class="mb-0 text-dark fw-bold">피드백 수신</h6>
+                            <small class="text-muted">{{ f.timestamp.strftime('%Y-%m-%d %H:%M') }}</small>
+                        </div>
+                        <div class="bg-light p-3 rounded text-break">
+                            {{ f.action }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="text-center py-5 text-muted">
+                        <i class="fas fa-inbox fa-3x mb-3 opacity-50"></i>
+                        <p>새로운 피드백이 없습니다.</p>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
@@ -149,6 +242,31 @@
                     <a href="/admin/backup" class="btn btn-dark btn-lg">
                         <i class="fas fa-download me-2"></i>DB 파일 다운로드 (.sqlite)
                     </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Password Change Modal -->
+<div class="modal fade" id="passwordModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title fw-bold">관리자 비밀번호 변경</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">새 비밀번호</label>
+                    <input type="password" class="form-control" id="newAdminPw">
+                </div>
+                <div class="mb-4">
+                    <label class="form-label">새 비밀번호 확인</label>
+                    <input type="password" class="form-control" id="confirmAdminPw">
+                </div>
+                <div class="d-grid">
+                    <button type="button" class="btn btn-primary" id="btnChangePw">변경하기</button>
                 </div>
             </div>
         </div>
@@ -200,6 +318,192 @@
                     showAlert('차단되었습니다.', function () {
                         location.reload();
                     });
+                }
+            });
+    }
+
+    document.getElementById('btnChangePw').addEventListener('click', function () {
+        const newPw = document.getElementById('newAdminPw').value;
+        const confirmPw = document.getElementById('confirmAdminPw').value;
+
+        if (!newPw) {
+            showAlert('비밀번호를 입력하세요.');
+            return;
+        }
+
+        if (newPw !== confirmPw) {
+            showAlert('비밀번호가 일치하지 않습니다.');
+            return;
+        }
+
+        fetch('/admin/change_password', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ new_password: newPw })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('passwordModal')).hide();
+                    showAlert('비밀번호가 변경되었습니다.\n다시 로그인해주세요.', function () {
+                        location.href = '/logout';
+                    });
+                } else {
+                    showAlert('변경 실패: ' + data.error);
+                }
+            });
+    });
+
+    // Pause Control
+    const pauseSwitch = document.getElementById('pauseSwitch');
+    const pauseReasonArea = document.getElementById('pauseReasonArea');
+    const pauseReasonInput = document.getElementById('pauseReason');
+    const btnApplyPause = document.getElementById('btnApplyPause');
+
+    // Mode Radios
+    const radioAll = document.getElementById('pauseAll');
+    const radioPartial = document.getElementById('pausePartial');
+    const dateRangeArea = document.getElementById('dateRangeArea');
+
+    function updateDateVisibility() {
+        if (radioPartial.checked) {
+            dateRangeArea.classList.remove('d-none');
+        } else {
+            dateRangeArea.classList.add('d-none');
+        }
+    }
+    radioAll.addEventListener('change', updateDateVisibility);
+    radioPartial.addEventListener('change', updateDateVisibility);
+
+    // Multiple Ranges Logic
+    const rangesContainer = document.getElementById('rangesContainer');
+    const addRangeBtn = document.getElementById('addRangeBtn');
+
+    // Load initial ranges from backend (passed via template)
+    let currentRanges = {{ settings.pause_ranges | tojson | safe }};
+    if (!Array.isArray(currentRanges)) currentRanges = [];
+
+    // Fallback: if empty but we have old fields (handled in backend but useful for UI state if needed, though we rely on ranges mostly now)
+    // Actually backend passes 'current_ranges' correctly including fallback.
+
+    function renderRanges() {
+        rangesContainer.innerHTML = '';
+        currentRanges.forEach((rng, index) => {
+            addRangeInput(rng, index);
+        });
+
+        // If empty, add one empty
+        if (currentRanges.length === 0) {
+            addRangeInput(null, 0);
+        }
+    }
+
+    function addRangeInput(data, index) {
+        const row = document.createElement('div');
+        row.className = 'input-group mb-2';
+        row.innerHTML = `
+            <span class="input-group-text bg-white border-end-0"><i class="fas fa-calendar-alt text-muted"></i></span>
+            <input type="text" class="form-control bg-white range-input" placeholder="기간 선택" readonly>
+            <button class="btn btn-outline-danger btn-remove-range" type="button"><i class="fas fa-times"></i></button>
+        `;
+        rangesContainer.appendChild(row);
+
+        const input = row.querySelector('.range-input');
+
+        // Init Flatpickr
+        flatpickr(input, {
+            mode: "range",
+            locale: "ko",
+            dateFormat: "Y-m-d",
+            defaultDate: data ? [data.start, data.end] : [],
+            onChange: function (selectedDates, dateStr, instance) {
+                // Update internal state or just read from DOM on submit?
+                // Reading from DOM on submit is easier for multiple inputs
+            }
+        });
+
+        // Remove handler
+        row.querySelector('.btn-remove-range').addEventListener('click', function () {
+            row.remove();
+        });
+    }
+
+    addRangeBtn.addEventListener('click', function () {
+        const count = rangesContainer.querySelectorAll('.range-input').length;
+        if (count >= 10) {
+            showAlert('최대 10개까지만 설정할 수 있습니다.');
+            return;
+        }
+        addRangeInput(null, count);
+    });
+
+    renderRanges();
+
+    pauseSwitch.addEventListener('change', function () {
+        if (this.checked) {
+            pauseReasonArea.classList.add('show');
+            pauseReasonInput.focus();
+        } else {
+            pauseReasonArea.classList.remove('show');
+            if (confirm('예약 중지를 해제하시겠습니까? (공지사항이 복구됩니다)')) {
+                togglePause(false, '', 'all', []);
+            } else {
+                this.checked = true;
+            }
+        }
+    });
+
+    btnApplyPause.addEventListener('click', function () {
+        const reason = pauseReasonInput.value;
+        const mode = radioPartial.checked ? 'partial' : 'all';
+
+        if (!reason) {
+            showAlert('중지 사유를 입력해주세요.');
+            return;
+        }
+
+        let ranges = [];
+        if (mode === 'partial') {
+            const inputs = rangesContainer.querySelectorAll('.range-input');
+            let hasValid = false;
+
+            inputs.forEach(input => {
+                if (input._flatpickr && input._flatpickr.selectedDates.length === 2) {
+                    const start = input._flatpickr.formatDate(input._flatpickr.selectedDates[0], "Y-m-d");
+                    const end = input._flatpickr.formatDate(input._flatpickr.selectedDates[1], "Y-m-d");
+                    ranges.push({ start: start, end: end });
+                    hasValid = true;
+                }
+            });
+
+            if (!hasValid) {
+                showAlert('최소 1개 이상의 유효한 기간을 설정해야 합니다.');
+                return;
+            }
+        }
+
+        togglePause(true, reason, mode, ranges);
+    });
+
+    function togglePause(isPaused, reason, mode, ranges) {
+        fetch('/admin/toggle_pause', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                pause: isPaused,
+                reason: reason,
+                mode: mode,
+                ranges: ranges
+            })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert(isPaused ? '설정이 적용되었습니다.' : '예약이 재개되었습니다.', function () {
+                        location.reload();
+                    });
+                } else {
+                    showAlert('설정 실패: ' + data.error);
                 }
             });
     }

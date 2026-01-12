@@ -14,6 +14,10 @@
         rel="stylesheet">
     <!-- FullCalendar -->
     <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.8/index.global.min.js"></script>
+    <!-- Flatpickr (Date Range Picker) -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <script src="https://npmcdn.com/flatpickr/dist/l10n/ko.js"></script>
     <!-- Custom Style -->
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
@@ -42,11 +46,11 @@
     </nav>
 
     <!-- Main Content with top padding logic due to fixed navbar -->
-    <div class="container py-5 mt-5">
+    <div class="container py-4 mt-5">
         {% block content %}{% endblock %}
     </div>
 
-    <footer class="text-center py-4 mt-5 text-muted small">
+    <footer class="text-center py-3 mt-1 text-muted small">
         <p class="mb-0">© 2026 지혜마루 작은 도서관.</p>
         <p class="mb-0">Powered by oryxdatasafe</p>
     </footer>

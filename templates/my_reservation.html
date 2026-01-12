@@ -54,9 +54,14 @@
 
             <div class="d-flex justify-content-between align-items-center mb-3">
                 <h4 class="fw-bold">예약 내역</h4>
-                <button class="btn btn-outline-secondary btn-sm rounded-pill px-3" id="btnLogout">
-                    <i class="fas fa-sign-out-alt me-1"></i>다른 번호 조회
-                </button>
+                <div>
+                    <button class="btn btn-success btn-sm rounded-pill px-3 me-1" id="btnSmartCheckin">
+                        <i class="fas fa-qrcode me-1"></i>QR 체크인
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm rounded-pill px-3" id="btnLogout">
+                        <i class="fas fa-sign-out-alt me-1"></i>로그아웃
+                    </button>
+                </div>
             </div>
             <div id="historyList"></div>
         </div>
@@ -66,39 +71,65 @@
 <!-- Cancel Modal -->
 <div class="modal fade" id="cancelModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0">
-            <div class="modal-header bg-danger text-white border-0">
-                <h5 class="modal-title fw-bold"><i class="fas fa-exclamation-circle me-2"></i>예약 취소</h5>
-                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold text-danger">예약 취소</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
-                <p id="cancelMsg" class="mb-3 fs-5">정말 예약을 취소하시겠습니까?</p>
-                <div class="alert alert-warning border-0 shadow-sm" id="penaltyWarning"
-                    style="display:none; background-color: #fff3cd; color: #856404;">
-                    <div class="d-flex">
-                        <i class="fas fa-exclamation-triangle fa-2x me-3 mt-1"></i>
-                        <div>
-                            <h6 class="fw-bold">당일 취소 안내 (노쇼 정책)</h6>
-                            <p class="mb-0 small">
-                                당일 취소 시 <strong>노쇼(No-Show)</strong>로 간주되어<br>
-                                향후 <strong>30일간 예약이 자동 차단</strong>됩니다.
-                            </p>
-                        </div>
-                    </div>
-                    <div class="form-check mt-3">
-                        <input class="form-check-input" type="checkbox" id="agreePenalty">
-                        <label class="form-check-label fw-bold" for="agreePenalty">노쇼 패널티 정책에 동의하며 취소합니다.</label>
+                <p class="fs-5 mb-3" id="cancelMsg">정말 예약을 취소하시겠습니까?</p>
+                <div id="penaltyWarning" class="alert alert-danger d-flex align-items-center" role="alert"
+                    style="display: none;">
+                    <i class="fas fa-exclamation-triangle me-3 fa-2x"></i>
+                    <div>
+                        <div class="fw-bold">위약금(패널티) 안내</div>
+                        <div class="small">당일 취소 시 <strong>30일간 예약이 제한</strong>됩니다.</div>
                     </div>
                 </div>
+                <div class="form-check" id="penaltyCheckArea">
+                    <input class="form-check-input" type="checkbox" id="agreePenalty">
+                    <label class="form-check-label fw-bold" for="agreePenalty">
+                        위 내용을 확인하였으며, 패널티 부과에 동의합니다.
+                    </label>
+                </div>
             </div>
-            <div class="modal-footer border-0 p-3 pt-0">
-                <button type="button" class="btn btn-secondary rounded-pill" data-bs-dismiss="modal">닫기</button>
-                <button type="button" class="btn btn-danger rounded-pill px-4" id="btnConfirmCancel">취소 확정</button>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">닫기</button>
+                <button type="button" class="btn btn-danger rounded-pill px-4" id="btnConfirmCancel">예약 취소</button>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Checkout Modal -->
+<div class="modal fade" id="checkoutModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title fw-bold"><i class="fas fa-camera me-2"></i>퇴실 인증 (청소 확인)</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="mb-3">다음 사용자를 위해 깔끔하게 정리하셨나요?<br>정리된 공간 사진을 찍어 올려주세요.</p>
+
+                <div class="mb-4 text-center">
+                    <label for="cleanPhoto" class="btn btn-outline-success w-100 p-4 border-2 border-dashed"
+                        style="border-style: dashed;">
+                        <i class="fas fa-camera fa-2x mb-2"></i><br>
+                        <span id="fileName">사진 촬영 또는 선택</span>
+                    </label>
+                    <input type="file" id="cleanPhoto" class="d-none" accept="image/*" capture="environment">
+                </div>
+
+                <div class="d-grid">
+                    <button type="button" class="btn btn-success btn-lg" id="btnConfirmCheckout">
+                        인증하고 퇴실하기
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
@@ -106,59 +137,173 @@
     let currentPhone = '';
     let targetCancelId = null;
     let isPenalty = false;
+    let checkoutModal = null;
+    let cancelModal = null;
 
-    document.getElementById('btnLookUp').addEventListener('click', loadHistory);
+    // Initialize Modals safely after DOM loaded
+    document.addEventListener('DOMContentLoaded', function () {
+        if (typeof bootstrap !== 'undefined') {
+            checkoutModal = new bootstrap.Modal(document.getElementById('checkoutModal'));
+            cancelModal = new bootstrap.Modal(document.getElementById('cancelModal'));
+        } else {
+            console.error('Bootstrap 5 not found!');
+        }
+    });
 
-    // Load Remembered Info
-    if (localStorage.getItem('rememberMe') === 'true') {
+    // Load saved phone if exists
+    if (localStorage.getItem('myPhone')) {
+        document.getElementById('myPhone').value = localStorage.getItem('myPhone');
         document.getElementById('rememberMe').checked = true;
-        document.getElementById('myPhone').value = localStorage.getItem('userPhone') || '';
-        document.getElementById('myPassword').value = localStorage.getItem('userPassword') || '';
     }
 
-    document.getElementById('btnLogout').addEventListener('click', function () {
-        document.getElementById('loginCard').style.display = 'block';
-        document.getElementById('historySection').style.display = 'none';
-        document.getElementById('historySection').style.display = 'none';
-        document.getElementById('myPhone').value = '';
-        document.getElementById('myPassword').value = '';
-    });
+    document.getElementById('btnLookUp').addEventListener('click', loadHistory);
 
     function loadHistory() {
         const phone = document.getElementById('myPhone').value;
         const password = document.getElementById('myPassword').value;
 
-        if (!phone || !password) return showAlert('전화번호와 비밀번호를 모두 입력하세요');
+        if (!phone || !password) {
+            showAlert('전화번호와 비밀번호를 모두 입력해주세요.');
+            return;
+        }
 
-        fetch(`/api/my_reservations?phone=${phone}&password=${password}`)
+        // Save to local storage if checked
+        if (document.getElementById('rememberMe').checked) {
+            localStorage.setItem('myPhone', phone);
+        } else {
+            localStorage.removeItem('myPhone');
+        }
+
+        const btn = document.getElementById('btnLookUp');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>조회 중...';
+
+        fetch('/api/my_history', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: phone, password: password })
+        })
             .then(res => res.json())
             .then(data => {
-                if (data.error) {
-                    showAlert(data.error);
-                    return;
-                }
+                btn.disabled = false;
+                btn.innerHTML = '조회하기';
 
-                // Save Info
-                if (document.getElementById('rememberMe').checked) {
-                    localStorage.setItem('rememberMe', 'true');
-                    localStorage.setItem('userPhone', phone);
-                    localStorage.setItem('userPassword', password);
+                if (data.success) {
+                    currentPhone = phone;
+                    document.getElementById('loginCard').style.display = 'none';
+                    document.getElementById('historySection').style.display = 'block';
+
+                    document.getElementById('wifiInfo').innerText = data.wifi_info || '-';
+                    document.getElementById('doorInfo').innerText = data.door_pw || '-';
+
+                    renderList(data.reservations);
                 } else {
-                    localStorage.removeItem('rememberMe');
+                    showAlert('조회 실패: ' + data.error);
                 }
-
-                if (data.length > 0) {
-                    document.getElementById('wifiInfo').innerText = data[0].wifi_info || '정보 없음';
-                    document.getElementById('doorInfo').innerText = data[0].door_pw || '정보 없음';
-                }
-
-                currentPhone = phone;
-                renderList(data);
-                document.getElementById('loginCard').style.display = 'none';
-                document.getElementById('historySection').style.display = 'block';
+            })
+            .catch(() => {
+                btn.disabled = false;
+                btn.innerHTML = '조회하기';
+                showAlert('서버 통신 오류');
             });
     }
 
+    document.getElementById('btnLogout').addEventListener('click', function () {
+        currentPhone = '';
+        document.getElementById('loginCard').style.display = 'block';
+        document.getElementById('historySection').style.display = 'none';
+        document.getElementById('myPassword').value = '';
+    });
+
+    document.getElementById('btnSmartCheckin').addEventListener('click', function () {
+        if (!currentPhone) return;
+
+        if (!confirm('현재 입실하시겠습니까?\n(예약 시간 10분 전부터 가능)')) return;
+
+        // Disable button temp
+        this.disabled = true;
+
+        fetch('/api/checkin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: currentPhone })
+        })
+            .then(res => res.json())
+            .then(data => {
+                this.disabled = false;
+                if (data.success) {
+                    showAlert(`${data.name}님, 입실 확인되었습니다.`);
+                    // Refresh list to show status change
+                    loadHistory();
+                } else {
+                    showAlert('체크인 실패: ' + data.error);
+                }
+            })
+            .catch(() => {
+                this.disabled = false;
+                showAlert('서버 통신 오류');
+            });
+    });
+
+    // Checkout Logic
+    const photoInput = document.getElementById('cleanPhoto');
+    const fileNameDisplay = document.getElementById('fileName');
+    let checkoutPhone = '';
+
+    photoInput.addEventListener('change', function () {
+        if (this.files && this.files[0]) {
+            fileNameDisplay.innerText = this.files[0].name;
+            fileNameDisplay.classList.add('fw-bold', 'text-success');
+        }
+    });
+
+    window.openCheckout = function () {
+        checkoutPhone = currentPhone;
+        if (checkoutModal) checkoutModal.show();
+    }
+
+    document.getElementById('btnConfirmCheckout').addEventListener('click', function () {
+        const file = photoInput.files[0];
+        if (!file) {
+            showAlert('청소 인증 사진을 업로드해주세요.');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('photo', file);
+        formData.append('phone', checkoutPhone);
+
+        // Loading state
+        const btn = this;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>업로드 중...';
+
+        fetch('/api/checkout', {
+            method: 'POST',
+            body: formData
+        })
+            .then(res => res.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = '인증하고 퇴실하기';
+
+                if (data.success) {
+                    if (checkoutModal) checkoutModal.hide();
+                    showAlert(data.message, function () {
+                        loadHistory();
+                    });
+                } else {
+                    showAlert('퇴실 처리 실패: ' + data.error);
+                }
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.innerHTML = '인증하고 퇴실하기';
+                showAlert('서버 통신 오류');
+            });
+    });
+
+    // Modified renderList to include Checkout Button
     function renderList(list) {
         const container = document.getElementById('historyList');
         container.innerHTML = '';
@@ -188,9 +333,14 @@
 
             let btnHtml = '';
             if (item.status === 'reserved') {
-                btnHtml = `<button class="btn btn-sm btn-outline-danger rounded-pill px-3" onclick="openCancel(${item.id}, '${item.start}')">예약 취소</button>`;
+                // Use data attributes and class for delegation
+                btnHtml = `<button class="btn btn-sm btn-outline-danger rounded-pill px-3 btn-cancel-reservation" 
+                           data-id="${item.id}" data-start="${item.start}">예약 취소</button>`;
+            } else if (item.status === 'checked_in') {
+                btnHtml = `<button class="btn btn-sm btn-success rounded-pill px-3 shadow" onclick="openCheckout()"><i class="fas fa-camera me-1"></i>퇴실/청소 인증</button>`;
             }
 
+            // Added Name display
             card.innerHTML = `
                 <div class="card-body p-4">
                     <div class="d-flex justify-content-between align-items-center mb-3">
@@ -200,8 +350,11 @@
                         </div>
                         ${statusMap[item.status] || item.status}
                     </div>
+                    <div class="d-flex align-items-center text-muted small mb-2">
+                        <i class="fas fa-user me-2" style="width: 20px; text-align: center;"></i> ${item.name}
+                    </div>
                     <div class="d-flex align-items-center text-muted small mb-3">
-                        <!-- Address Removed -->
+                        <i class="fas fa-book-open me-2" style="width: 20px; text-align: center;"></i> ${item.purpose || '목적 미기입'}
                     </div>
                     <div class="text-end border-top pt-3">
                         ${btnHtml}
@@ -212,57 +365,108 @@
         });
     }
 
+    // Event Delegation for Cancel Button
+    document.getElementById('historyList').addEventListener('click', function (e) {
+        const btn = e.target.closest('.btn-cancel-reservation');
+        if (btn) {
+            const id = btn.getAttribute('data-id');
+            const start = btn.getAttribute('data-start');
+            openCancel(id, start);
+        }
+    });
+
+    // Open Cancel Modal
     window.openCancel = function (id, startStr) {
-        targetCancelId = id;
-        const startDate = new Date(startStr);
-        const today = new Date();
-        const isToday = startDate.toDateString() === today.toDateString();
-
-        const warning = document.getElementById('penaltyWarning');
-        const msg = document.getElementById('cancelMsg');
-        const agreeCheck = document.getElementById('agreePenalty');
-
-        // Reset checkbox
-        agreeCheck.checked = false;
-
-        if (isToday) {
-            isPenalty = true;
-            warning.style.display = 'block';
-            msg.innerText = "오늘 날짜의 예약입니다.";
-            document.getElementById('btnConfirmCancel').disabled = true;
-
-            agreeCheck.addEventListener('change', function () {
-                document.getElementById('btnConfirmCancel').disabled = !this.checked;
-            });
-
-        } else {
-            isPenalty = false;
-            warning.style.display = 'none';
-            msg.innerText = "정말 예약을 취소하시겠습니까?";
-            document.getElementById('btnConfirmCancel').disabled = false;
+        if (!id || !startStr) {
+            alert('오류: 예약 정보를 불러올 수 없습니다.');
+            return;
         }
 
-        new bootstrap.Modal(document.getElementById('cancelModal')).show();
-    }
+        targetCancelId = id;
 
-    document.getElementById('btnConfirmCancel').addEventListener('click', function () {
-        if (!targetCancelId) return;
+        // Date Logic (String Comparison for Robustness)
+        const resDateStr = startStr.split(' ')[0]; // YYYY-MM-DD
 
-        fetch(`/api/reservations/${targetCancelId}/cancel`, {
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        const day = String(now.getDate()).padStart(2, '0');
+        const todayStr = `${year}-${month}-${day}`;
+
+        isPenalty = (resDateStr === todayStr);
+
+        // Try to show Modal
+        try {
+            if (!cancelModal) {
+                // Try to init if missing?
+                if (typeof bootstrap !== 'undefined') {
+                    cancelModal = new bootstrap.Modal(document.getElementById('cancelModal'));
+                } else {
+                    throw new Error('Bootstrap missing');
+                }
+            }
+
+            if (isPenalty) {
+                document.getElementById('penaltyWarning').style.display = 'flex';
+                document.getElementById('penaltyCheckArea').style.display = 'block';
+                document.getElementById('cancelMsg').innerText = "당일 취소는 패널티가 부과됩니다.\n정말 취소하시겠습니까?";
+                document.getElementById('btnConfirmCancel').disabled = true;
+                document.getElementById('agreePenalty').checked = false;
+            } else {
+                document.getElementById('penaltyWarning').style.display = 'none';
+                document.getElementById('penaltyCheckArea').style.display = 'none';
+                document.getElementById('cancelMsg').innerText = "정말 예약을 취소하시겠습니까?";
+                document.getElementById('btnConfirmCancel').disabled = false;
+            }
+
+            cancelModal.show();
+
+        } catch (e) {
+            // Fallback to native confirm
+            let msg = "정말 예약을 취소하시겠습니까?";
+            if (isPenalty) {
+                msg = "당일 취소는 30일간 예약이 제한되는 패널티가 부과됩니다.\n동의하고 취소하시겠습니까?";
+            }
+
+            if (confirm(msg)) {
+                cancelReservationApi(targetCancelId, isPenalty);
+            }
+        }
+    };
+
+    // Helper for API call
+    function cancelReservationApi(id, penalty) {
+        fetch(`/api/reservations/${id}/cancel`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ is_penalty: isPenalty })
+            body: JSON.stringify({ is_penalty: penalty })
         })
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
+                    if (cancelModal) {
+                        try { cancelModal.hide(); } catch (e) { }
+                    }
                     showAlert('취소되었습니다.', function () {
                         location.reload();
                     });
                 } else {
                     showAlert('오류: ' + data.error);
                 }
+            })
+            .catch(err => {
+                showAlert('서버 통신 오류');
             });
+    }
+
+    document.getElementById('agreePenalty').addEventListener('change', function () {
+        document.getElementById('btnConfirmCancel').disabled = !this.checked;
+    });
+
+    document.getElementById('btnConfirmCancel').addEventListener('click', function () {
+        if (!targetCancelId) return;
+        this.disabled = true;
+        cancelReservationApi(targetCancelId, isPenalty);
     });
 </script>
 {% endblock %}

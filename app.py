@@ -7,6 +7,7 @@ import io
 from ics import Calendar, Event
 import shutil
 from dotenv import load_dotenv
+from PIL import Image, ImageDraw, ImageFont # Added for QR Poster
 
 load_dotenv()
 
@@ -16,26 +17,71 @@ app.secret_key = os.environ.get('SECRET_KEY', 'default-dev-key-change-this-in-pr
 # Absolute path for DB
 basedir = os.path.abspath(os.path.dirname(__file__))
 
+
 @app.before_request
 def auto_logout_if_leaving_admin():
-    # If user is admin (session has 'is_admin')
-    if session.get('is_admin'):
-        # Allow requests to admin pages, login, logout, and static files
-        # Also allow favicon.ico which browsers request automatically
-        allowed_prefixes = ['/admin', '/login', '/logout', '/static', '/favicon.ico']
+    # Check if user is admin OR developer
+    is_admin = session.get('is_admin')
+    is_dev = session.get('is_dev')
+    
+    if is_admin or is_dev:
+        # Allow requests to admin/dev pages, login, logout, and static files
+        allowed_prefixes = ['/admin', '/login', '/logout', '/static', '/favicon.ico', '/developer', '/dev']
         
         # Check if the current request path matches any allowed prefix
         is_allowed = any(request.path.startswith(prefix) for prefix in allowed_prefixes)
         
         if not is_allowed:
-            # If navigating away from admin/auth/static pages, log out
+            # If navigating away from admin/dev/auth/static pages, log out
             session.pop('is_admin', None)
+            session.pop('is_dev', None)
+
+@app.before_request
+def maintenance_check():
+    # Maintenance Mode Check
+    if get_setting('maintenance_mode') == 'true':
+        # Allow static files and admin/dev login, and DEV APIs
+        allowed_prefixes = ['/admin', '/login', '/logout', '/static', '/developer', '/dev-login', '/favicon.ico', '/dev/']
+        if not any(request.path.startswith(prefix) for prefix in allowed_prefixes):
+            return render_template('maintenance.html'), 503
+
+    # Log Access (Exclude static and internal polling if any)
+    if not request.path.startswith('/static') and not request.path == '/favicon.ico':
+        try:
+            # Create log entry
+            log = AccessLog(
+                ip_address=request.remote_addr,
+                user_agent=request.user_agent.string[:200],
+                path=request.path,
+                method=request.method
+            )
+            db.session.add(log)
+            db.session.commit()
+        except Exception:
+            pass # Don't block request on log failure
+
+@app.errorhandler(500)
+def handle_500(e):
+    import traceback
+    try:
+        log = ErrorLog(
+            error_msg=str(e),
+            traceback=traceback.format_exc()
+        )
+        db.session.add(log)
+        db.session.commit()
+    except:
+        pass
+    return "Internal Server Error", 500
 instance_path = os.path.join(basedir, 'instance')
 if not os.path.exists(instance_path):
     os.makedirs(instance_path)
 
 db_path = os.path.join(instance_path, 'library.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + db_path
+app.config['SQLALCHEMY_BINDS'] = {
+    'logs': 'sqlite:///' + os.path.join(instance_path, 'logs.db')
+}
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db = SQLAlchemy(app)
@@ -45,13 +91,13 @@ class Reservation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False)
     phone = db.Column(db.String(20), nullable=False)
-    phone = db.Column(db.String(20), nullable=False)
     password = db.Column(db.String(20), nullable=False) # Changed from address
     start_time = db.Column(db.DateTime, nullable=False)
     end_time = db.Column(db.DateTime, nullable=False)
     purpose = db.Column(db.String(200), nullable=True)
     status = db.Column(db.String(20), default='reserved') # reserved, checked_in, ended, cancelled, noshow_penalty
     admin_memo = db.Column(db.Text, nullable=True) # New Field
+    checkout_photo = db.Column(db.String(255), nullable=True) # New: Cleaning photo
     created_at = db.Column(db.DateTime, default=datetime.now)
 
     def to_dict(self):
@@ -81,6 +127,31 @@ class Settings(db.Model):
     key = db.Column(db.String(50), primary_key=True)
     value = db.Column(db.Text, nullable=True)
 
+# --- Log Models (logs.db) ---
+class AccessLog(db.Model):
+    __bind_key__ = 'logs'
+    id = db.Column(db.Integer, primary_key=True)
+    ip_address = db.Column(db.String(50))
+    user_agent = db.Column(db.String(200))
+    path = db.Column(db.String(100))
+    method = db.Column(db.String(10))
+    timestamp = db.Column(db.DateTime, default=datetime.now)
+
+class AdminLog(db.Model):
+    __bind_key__ = 'logs'
+    id = db.Column(db.Integer, primary_key=True)
+    admin_type = db.Column(db.String(20)) # 'admin' or 'dev'
+    action = db.Column(db.String(100))
+    ip_address = db.Column(db.String(50))
+    timestamp = db.Column(db.DateTime, default=datetime.now)
+
+class ErrorLog(db.Model):
+    __bind_key__ = 'logs'
+    id = db.Column(db.Integer, primary_key=True)
+    error_msg = db.Column(db.Text)
+    traceback = db.Column(db.Text)
+    timestamp = db.Column(db.DateTime, default=datetime.now)
+
 # --- Helpers ---
 def get_setting(key, default=''):
     setting = Settings.query.get(key)
@@ -94,6 +165,18 @@ def set_setting(key, value):
         setting = Settings(key=key, value=value)
         db.session.add(setting)
     db.session.commit()
+
+def log_admin_action(admin_type, action):
+    try:
+        log = AdminLog(
+            admin_type=admin_type,
+            action=action,
+            ip_address=request.remote_addr
+        )
+        db.session.add(log)
+        db.session.commit()
+    except:
+        pass # Fail silently for logs
 
 # --- Routes ---
 
@@ -117,34 +200,77 @@ def display_page():
 
 @app.route('/admin')
 def admin_page():
-    if not session.get('is_admin'):
+    # Allow Devs to access Admin seamlessly
+    if not session.get('is_admin') and not session.get('is_dev'):
         return redirect(url_for('login'))
     
     reservations = Reservation.query.order_by(Reservation.start_time.desc()).all()
     
     # Settings for admin view
+    import json
+    try:
+        current_ranges = json.loads(get_setting('pause_ranges', '[]'))
+    except:
+        current_ranges = []
+        
     settings = {
         'notice_text': get_setting('notice_text'),
         'wifi_info': get_setting('wifi_info'),
-        'door_pw': get_setting('door_pw')
+        'door_pw': get_setting('door_pw'),
+        'reservation_paused': get_setting('reservation_paused') == 'true',
+        'pause_reason': get_setting('pause_reason'),
+        'pause_mode': get_setting('pause_mode', 'all'),
+        'pause_ranges': current_ranges 
     }
     
-    return render_template('admin.html', reservations=reservations, settings=settings)
+    # Fetch Feedback
+    feedbacks = AdminLog.query.filter_by(admin_type='feedback').order_by(AdminLog.timestamp.desc()).limit(50).all()
+
+    return render_template('admin.html', reservations=reservations, settings=settings, feedbacks=feedbacks)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
         password = request.form.get('password')
-        if password == 'admin123!':
+        
+        # Check Admin PW (DB backed)
+        saved_admin_pw = get_setting('admin_pw', 'admin123!')
+        saved_dev_pw = get_setting('dev_pw', '123qwe!')
+
+        if password == saved_admin_pw:
             session['is_admin'] = True
+            log_admin_action('admin', 'Login')
             return redirect(url_for('admin_page'))
+        elif password == saved_dev_pw:
+            session['is_dev'] = True
+            log_admin_action('dev', 'Login')
+            return redirect(url_for('developer_page'))
         else:
             return render_template('login.html', error='비밀번호가 틀렸습니다.')
     return render_template('login.html')
 
+@app.route('/dev-login', methods=['GET', 'POST'])
+def dev_login_endpoint():
+    if request.method == 'POST':
+        password = request.form.get('password')
+        if password == '123qwe!':
+            session['is_dev'] = True
+            log_admin_action('dev', 'Login')
+            return redirect(url_for('developer_page'))
+        else:
+            return render_template('login.html', dev_mode=True, error='비밀번호가 틀렸습니다.')
+            
+    return render_template('login.html', dev_mode=True)
+
 @app.route('/logout')
 def logout():
+    if session.get('is_admin'):
+        log_admin_action('admin', 'Logout')
+    if session.get('is_dev'):
+        log_admin_action('dev', 'Logout')
+        
     session.pop('is_admin', None)
+    session.pop('is_dev', None)
     return redirect(url_for('login'))
 
 # --- API ---
@@ -154,7 +280,65 @@ def get_reservations():
     events = Reservation.query.filter(
         Reservation.status.in_(['reserved', 'checked_in'])
     ).all()
-    return jsonify([e.to_dict() for e in events])
+    
+    event_list = [e.to_dict() for e in events]
+    
+    # Inject Visual Block if Paused
+    if get_setting('reservation_paused') == 'true':
+        mode = get_setting('pause_mode', 'all')
+        reason = get_setting('pause_reason', '')
+        
+        if mode == 'all':
+            # Block for next 1 year
+            start_dt = datetime.now()
+            end_dt = start_dt + timedelta(days=365)
+            event_list.append({
+                'id': 'blocked_all',
+                'title': f'⛔ 예약 중지 ({reason})',
+                'start': start_dt.strftime('%Y-%m-%d'),
+                'end': end_dt.strftime('%Y-%m-%d'),
+                'color': '#757575',
+                'allDay': True,
+                'editable': False,
+                'display': 'block' 
+            })
+        elif mode == 'partial':
+            import json
+            ranges_str = get_setting('pause_ranges', '[]')
+            try:
+                pause_ranges = json.loads(ranges_str)
+            except:
+                pause_ranges = []
+                
+            # Fallback
+            if not pause_ranges:
+                p_s = get_setting('pause_start')
+                p_e = get_setting('pause_end')
+                if p_s and p_e:
+                     pause_ranges.append({'start': p_s, 'end': p_e})
+
+            for idx, rng in enumerate(pause_ranges):
+                try:
+                    p_start = rng['start']
+                    p_end = rng['end']
+                    
+                    # Add +1 day to end for FullCalendar exclusive end date
+                    end_obj = datetime.strptime(p_end, '%Y-%m-%d') + timedelta(days=1)
+                    p_end_exclusive = end_obj.strftime('%Y-%m-%d')
+                    
+                    event_list.append({
+                        'id': f'blocked_partial_{idx}',
+                        'title': f'⛔ 예약 서비스 중지 ({reason})',
+                        'start': p_start,
+                        'end': p_end_exclusive,
+                        'color': '#ff4444', 
+                        'allDay': True,
+                        'editable': False
+                    })
+                except:
+                    pass
+
+    return jsonify(event_list)
 
 @app.route('/api/reservations', methods=['POST'])
 def create_reservation():
@@ -162,10 +346,11 @@ def create_reservation():
     name = data.get('name')
     phone = data.get('phone')
     password = data.get('password')
+    purpose = data.get('purpose')
     start_str = data.get('start')
     end_str = data.get('end')
     
-    if not all([name, phone, password, start_str, end_str]):
+    if not all([name, phone, password, purpose, start_str, end_str]):
         return jsonify({'error': '필수 입력 항목이 누락되었습니다.'}), 400
 
     try:
@@ -176,6 +361,41 @@ def create_reservation():
 
     if start_time < datetime.now():
         return jsonify({'error': '지난 날짜는 예약할 수 없습니다.'}), 400
+
+    # 0. Global/Partial Pause Check
+    if get_setting('reservation_paused') == 'true':
+        pause_mode = get_setting('pause_mode', 'all')
+        reason = get_setting('pause_reason', '시스템 점검으로 인한 예약 일시 중지')
+        
+        should_block = False
+        if pause_mode == 'all':
+            should_block = True
+        elif pause_mode == 'partial':
+            import json
+            # Load ranges
+            ranges_str = get_setting('pause_ranges', '[]')
+            try:
+                pause_ranges = json.loads(ranges_str)
+            except:
+                pause_ranges = []
+                
+            # Fallback for old single range if 'pause_ranges' is empty but legacy keys exist
+            if not pause_ranges:
+                p_start = get_setting('pause_start')
+                p_end = get_setting('pause_end')
+                if p_start and p_end:
+                    pause_ranges.append({'start': p_start, 'end': p_end})
+            
+            # Check overlap
+            res_date = start_time.strftime('%Y-%m-%d')
+            for rng in pause_ranges:
+                # Assuming rng is {start: 'YYYY-MM-DD', end: 'YYYY-MM-DD'}
+                if rng.get('start') <= res_date <= rng.get('end'):
+                    should_block = True
+                    break
+                    
+        if should_block:
+            return jsonify({'error': f'해당 기간은 예약이 일시 중지되었습니다.\n사유: {reason}'}), 403
 
     # 1. Blacklist Check
     blocked = Blacklist.query.filter_by(phone=phone).first()
@@ -215,6 +435,7 @@ def create_reservation():
         name=name.strip(),
         phone=phone.strip(),
         password=password.strip(),
+        purpose=purpose.strip(),
         start_time=start_time,
         end_time=end_time
     )
@@ -222,6 +443,23 @@ def create_reservation():
     db.session.commit()
     
     return jsonify({'success': True, 'id': new_res.id}), 201
+
+@app.route('/api/feedback', methods=['POST'])
+def submit_feedback():
+    data = request.json
+    msg = data.get('message', '').strip()
+    contact = data.get('contact', '').strip()
+    
+    if not msg:
+        return jsonify({'error': '내용을 입력해주세요.'}), 400
+    
+    full_msg = f"[Feedback] {msg}"
+    if contact:
+        full_msg += f" (Contact: {contact})"
+
+    # Store in AdminLog with type 'feedback'
+    log_admin_action('feedback', full_msg)
+    return jsonify({'success': True})
 
 @app.route('/api/reservations/<int:id>/download_ics')
 def download_ics(id):
@@ -240,10 +478,11 @@ def download_ics(id):
         headers={'Content-Disposition': f'attachment; filename=reservation_{id}.ics'}
     )
 
-@app.route('/api/my_reservations', methods=['GET'])
-def my_reservations_api():
-    phone = request.args.get('phone')
-    password = request.args.get('password')
+@app.route('/api/my_history', methods=['POST'])
+def my_history_api():
+    data = request.json
+    phone = data.get('phone')
+    password = data.get('password')
 
     if not phone or not password:
         return jsonify({'error': '전화번호와 비밀번호가 필요합니다.'}), 400
@@ -262,16 +501,14 @@ def my_reservations_api():
         results.append({
             'id': r.id,
             'name': r.name,
-            'id': r.id,
-            'name': r.name,
-            # 'address': r.address, # Removed
+            'purpose': r.purpose,
             'status': r.status,
             'start': r.start_time.strftime('%Y-%m-%d %H:%M'),
             'end': r.end_time.strftime('%H:%M'),
-            'wifi_info': wifi_info, # Secure info only returned to verified user
+            'wifi_info': wifi_info,
             'door_pw': door_pw
         })
-    return jsonify(results)
+    return jsonify({'success': True, 'reservations': results, 'wifi_info': wifi_info, 'door_pw': door_pw})
 
 @app.route('/api/reservations/<int:id>/cancel', methods=['POST'])
 def cancel_reservation(id):
@@ -328,6 +565,51 @@ def checkin_process():
     db.session.commit()
     return jsonify({'success': True, 'name': target_res.name})
 
+@app.route('/api/checkout', methods=['POST'])
+def checkout_process():
+    if 'photo' not in request.files:
+        return jsonify({'error': '청소 사진을 업로드해주세요.'}), 400
+    
+    file = request.files['photo']
+    phone = request.form.get('phone')
+    
+    if file.filename == '':
+        return jsonify({'error': '파일이 선택되지 않았습니다.'}), 400
+        
+    if not phone:
+        return jsonify({'error': '식별 정보(전화번호)가 누락되었습니다.'}), 400
+
+    # Find the active reservation (checked_in)
+    target_res = Reservation.query.filter(
+        Reservation.phone.like(f'%{phone}'),
+        Reservation.status == 'checked_in'
+    ).order_by(Reservation.start_time.desc()).first()
+
+    if not target_res:
+         # Fallback: check if 'reserved' (user skipped checkin)
+        target_res = Reservation.query.filter(
+            Reservation.phone.like(f'%{phone}'),
+            Reservation.status == 'reserved'
+        ).order_by(Reservation.start_time.desc()).first()
+
+    if not target_res:
+        return jsonify({'error': '퇴실 가능한 예약이 없습니다.'}), 404
+
+    # Save File
+    filename = f"checkout_{target_res.id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
+    upload_folder = os.path.join(basedir, 'static', 'uploads')
+    if not os.path.exists(upload_folder):
+        os.makedirs(upload_folder)
+        
+    filepath = os.path.join(upload_folder, filename)
+    file.save(filepath)
+
+    target_res.checkout_photo = filename
+    target_res.status = 'ended'
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': '퇴실 처리가 완료되었습니다.'})
+
 # --- Admin API ---
 
 @app.route('/admin/settings', methods=['POST'])
@@ -350,6 +632,22 @@ def update_admin_memo(id):
     res = Reservation.query.get_or_404(id)
     res.admin_memo = request.json.get('memo', '')
     db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/admin/change_password', methods=['POST'])
+def change_admin_password():
+    if not session.get('is_admin') and not session.get('is_dev'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.json
+    new_pw = data.get('new_password')
+    
+    if not new_pw or len(new_pw) < 4:
+         return jsonify({'error': '비밀번호는 4자 이상이어야 합니다.'}), 400
+         
+    set_setting('admin_pw', new_pw)
+    log_admin_action('admin', 'Changed Admin Password')
+    
     return jsonify({'success': True})
 
 @app.route('/admin/backup')
@@ -377,24 +675,8 @@ def download_excel():
         'noshow_penalty': '노쇼(패널티)'
     }
 
-    for r in reservations:
-        data.append({
-            'ID': r.id,
-            '이름': r.name,
-            '전화번호': r.phone,
-            '주소': r.address,
-            '시작시간': r.start_time,
-            '종료시간': r.end_time,
-            '상태': status_map.get(r.status, r.status), # Translate status
-            '관리자 메모': r.admin_memo
-        })
-        
-    if not data:
-        return "데이터가 없습니다."
-        
-    # Ensure correct column order
-    # cols = ['ID', '이름', '전화번호', '주소', '시작시간', '종료시간', '상태', '관리자 메모']
-
+    # Headers for processing (though we use openpyxl manual write below)
+    
     output = io.BytesIO()
     
     # Use openpyxl directly instead of pandas
@@ -403,7 +685,7 @@ def download_excel():
     ws.title = '예약내역'
     
     # Headers
-    headers = ['ID', '이름', '전화번호', '시작시간', '종료시간', '상태', '관리자 메모']
+    headers = ['ID', '이름', '전화번호', '사용목적', '시작시간', '종료시간', '상태', '관리자 메모']
     ws.append(headers)
     
     for r in reservations:
@@ -411,6 +693,7 @@ def download_excel():
             r.id,
             r.name,
             r.phone,
+            r.purpose,
             r.start_time,
             r.end_time,
             status_map.get(r.status, r.status),
@@ -441,6 +724,54 @@ def manual_block(phone):
         db.session.add(bl)
         
     db.session.commit()
+    db.session.commit()
+    return jsonify({'success': True})
+
+@app.route('/admin/toggle_pause', methods=['POST'])
+def toggle_pause():
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.json
+    should_pause = data.get('pause') # Boolean
+    reason = data.get('reason', '').strip()
+    mode = data.get('mode', 'all')
+    
+    # List of {start: '...', end: '...'}
+    ranges = data.get('ranges', []) 
+    
+    if should_pause:
+        import json
+        set_setting('reservation_paused', 'true')
+        set_setting('pause_reason', reason)
+        set_setting('pause_mode', mode)
+        set_setting('pause_ranges', json.dumps(ranges))
+        
+        # Notice Logic
+        set_setting('original_notice', get_setting('notice_text')) # Backup
+        
+        if mode == 'all':
+            notice_msg = f"[예약 중지 안내] {reason}"
+        else:
+            # Maybe show first range + etc
+            if ranges:
+                first = ranges[0]
+                count = len(ranges)
+                suffix = f" 외 {count-1}건" if count > 1 else ""
+                notice_msg = f"[부분 예약 중지] {reason} ({first['start']}~{first['end']}{suffix})"
+            else:
+                 notice_msg = f"[부분 예약 중지] {reason}"
+            
+        set_setting('notice_text', notice_msg)
+        log_admin_action('admin', f'Paused Reservations ({mode}): {reason}')
+    else:
+        set_setting('reservation_paused', 'false')
+        # Restore original notice if exists
+        orig = get_setting('original_notice')
+        if orig:
+            set_setting('notice_text', orig)
+        log_admin_action('admin', 'Resumed Reservations')
+        
     return jsonify({'success': True})
 
 @app.route('/api/stats_today')
@@ -457,6 +788,124 @@ def stats_today():
     
     return jsonify([r.to_dict() for r in res_list])
 
+
+@app.route('/developer')
+def developer_page():
+    if not session.get('is_dev'):
+        return redirect(url_for('login'))
+    
+    # Fetch Data
+    reservations = Reservation.query.order_by(Reservation.start_time.desc()).all()
+    access_logs = AccessLog.query.order_by(AccessLog.timestamp.desc()).limit(100).all()
+    admin_logs = AdminLog.query.order_by(AdminLog.timestamp.desc()).limit(100).all()
+    error_logs = ErrorLog.query.order_by(ErrorLog.timestamp.desc()).limit(50).all()
+    
+    maintenance_mode = get_setting('maintenance_mode') == 'true'
+
+    # Settings
+    settings = {
+        'notice_text': get_setting('notice_text'),
+        'wifi_info': get_setting('wifi_info'),
+        'door_pw': get_setting('door_pw')
+    }
+
+    # Status Map
+    status_map = {
+        'reserved': '예약중',
+        'checked_in': '입실완료',
+        'ended': '종료됨',
+        'cancelled': '취소됨',
+        'noshow_penalty': '노쇼(패널티)'
+    }
+
+    return render_template('developer.html', 
+                           reservations=reservations,
+                           access_logs=access_logs, 
+                           admin_logs=admin_logs,
+                           error_logs=error_logs,
+                           settings=settings,
+                           maintenance_mode=maintenance_mode,
+                           status_map=status_map)
+
+@app.route('/dev/toggle_maintenance', methods=['POST'])
+def toggle_maintenance():
+    if not session.get('is_dev'): return jsonify({'error': 'Unauthorized'}), 401
+    
+    current = get_setting('maintenance_mode')
+    new_val = 'false' if current == 'true' else 'true'
+    set_setting('maintenance_mode', new_val)
+    log_admin_action('dev', f'Set Maintenance Mode: {new_val}')
+    return jsonify({'success': True, 'mode': new_val})
+
+@app.route('/dev/integrity_check', methods=['POST'])
+def integrity_check():
+    if not session.get('is_dev'): return jsonify({'error': 'Unauthorized'}), 401
+    
+    # Check for past 'reserved'
+    now = datetime.now()
+    past_reserved = Reservation.query.filter(
+        Reservation.start_time < now,
+        Reservation.status == 'reserved'
+    ).all()
+    
+    report = []
+    if past_reserved:
+        report.append(f"과거 날짜의 '예약중' 상태 {len(past_reserved)}건 발견. (자동 완료 처리 권장)")
+    
+    log_admin_action('dev', 'Run Integrity Check')
+    return jsonify({'success': True, 'report': report, 'issues_count': len(past_reserved)})
+
+@app.route('/dev/integrity_fix', methods=['POST'])
+def integrity_fix():
+    if not session.get('is_dev'): return jsonify({'error': 'Unauthorized'}), 401
+    
+    now = datetime.now()
+    past_reserved = Reservation.query.filter(
+        Reservation.start_time < now,
+        Reservation.status == 'reserved'
+    ).all()
+    
+    count = 0
+    for r in past_reserved:
+        r.status = 'ended'
+        count += 1
+        
+    db.session.commit()
+    log_admin_action('dev', f'Fixed {count} Integrity Issues')
+    return jsonify({'success': True, 'fixed_count': count})
+
+@app.route('/dev/reservations/<int:id>/delete', methods=['POST'])
+def delete_reservation_dev(id):
+    if not session.get('is_dev'): return jsonify({'error': 'Unauthorized'}), 401
+    
+    try:
+        res = Reservation.query.get_or_404(id)
+        
+        # Manually create log to ensure single transaction commit
+        log = AdminLog(
+            admin_type='dev',
+            action=f'Deleted Reservation ID {id}: {res.name} ({res.start_time})',
+            ip_address=request.remote_addr
+        )
+        
+        db.session.add(log)
+        db.session.delete(res)
+        db.session.commit()
+        
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        # The global error handler will catch this and log it to ErrorLog
+        raise e
+
+@app.route('/dev/download_logs')
+def download_logs_db():
+    if not session.get('is_dev'): return redirect(url_for('login'))
+    log_db_path = os.path.join(instance_path, 'logs.db')
+    if os.path.exists(log_db_path):
+        return send_file(log_db_path, as_attachment=True, download_name=f'logs_backup_{datetime.now().strftime("%Y%m%d")}.sqlite')
+    else:
+        return "Log DB does not exist yet.", 404
 
 import qrcode
 
@@ -488,11 +937,103 @@ def generate_qr_code():
     output.seek(0)
     
     return send_file(output, mimetype='image/png')
+
+@app.route('/admin/download_qr_poster')
+def download_qr_poster():
+    if not session.get('is_admin'):
+        return redirect(url_for('login'))
+
+    # 1. Generate QR URL
+    host_url = request.host_url
+    if 'localhost' in host_url or '127.0.0.1' in host_url:
+        import socket
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(("8.8.8.8", 80))
+            local_ip = s.getsockname()[0]
+            s.close()
+            checkin_url = f"http://{local_ip}:5000/checkin"
+        except:
+            checkin_url = f"{host_url}checkin"
+    else:
+        checkin_url = f"{host_url}checkin"
+
+    # 2. Create QR Image
+    qr = qrcode.QRCode(
+        version=1,
+        error_correction=qrcode.constants.ERROR_CORRECT_H,
+        box_size=20,
+        border=2,
+    )
+    qr.add_data(checkin_url)
+    qr.make(fit=True)
+    qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGBA')
+
+    # 3. Create A4 Canvas (approx 150 DPI: 1240 x 1754)
+    # White background
+    width, height = 1240, 1754
+    canvas = Image.new('RGB', (width, height), 'white')
+    draw = ImageDraw.Draw(canvas)
+
+    # 4. Load Fonts (Windows default Korean font)
+    # Using 'malgun.ttf' (Malgun Gothic)
+    font_path = "C:/Windows/Fonts/malgun.ttf"
+    if not os.path.exists(font_path):
+        font_path = "C:/Windows/Fonts/malgunbd.ttf" # Try bold
+    
+    try:
+        title_font = ImageFont.truetype(font_path, 120)
+        subtitle_font = ImageFont.truetype(font_path, 60)
+        desc_font = ImageFont.truetype(font_path, 40)
+        small_font = ImageFont.truetype(font_path, 30)
+    except IOError:
+        # Fallback if no font found (should not happen on standard Windows)
+        title_font = ImageFont.load_default()
+        subtitle_font = ImageFont.load_default()
+        desc_font = ImageFont.load_default()
+        small_font = ImageFont.load_default()
+
+    # 5. Draw Content
+    # Border
+    border_px = 50
+    draw.rectangle([border_px, border_px, width-border_px, height-border_px], outline="black", width=10)
+
+    # Title
+    draw.text((width/2, 200), "지혜마루 작은 도서관", font=subtitle_font, fill="black", anchor="mm")
+    draw.text((width/2, 350), "입실 체크인", font=title_font, fill="#0056b3", anchor="mm")
+
+    # Place QR
+    # Resize QR to fit nicely (e.g. 800x800)
+    qr_size = 800
+    qr_img = qr_img.resize((qr_size, qr_size))
+    qr_x = (width - qr_size) // 2
+    qr_y = 500
+    canvas.paste(qr_img, (qr_x, qr_y), qr_img)
+
+    # Instructions
+    text_y = qr_y + qr_size + 100
+    draw.text((width/2, text_y), "스마트폰 카메라를 켜고", font=desc_font, fill="#333", anchor="mm")
+    draw.text((width/2, text_y + 60), "위 QR 코드를 스캔하세요", font=desc_font, fill="#333", anchor="mm")
+    
+    # Detail
+    draw.text((width/2, text_y + 180), "예약된 전화번호로 인증 후 입실할 수 있습니다.", font=small_font, fill="#666", anchor="mm")
+    draw.text((width/2, text_y + 230), "문의: 관리자 호출", font=small_font, fill="#999", anchor="mm")
+
+    # 6. Save
+    output = io.BytesIO()
+    canvas.save(output, format='PNG')
+    output.seek(0)
+
+    return send_file(output, mimetype='image/png', as_attachment=True, download_name='checkin_poster_a4.png')
     
 def create_init_data():
     if not os.path.exists('instance'):
         os.makedirs('instance')
     db.create_all()
+    try:
+        db.create_all(bind='logs')
+    except:
+        pass
     
     # Init default settings if empty
     if not Settings.query.all():
