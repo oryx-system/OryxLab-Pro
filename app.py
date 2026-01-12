@@ -15,6 +15,21 @@ app.secret_key = os.environ.get('SECRET_KEY', 'default-dev-key-change-this-in-pr
 
 # Absolute path for DB
 basedir = os.path.abspath(os.path.dirname(__file__))
+
+@app.before_request
+def auto_logout_if_leaving_admin():
+    # If user is admin (session has 'is_admin')
+    if session.get('is_admin'):
+        # Allow requests to admin pages, login, logout, and static files
+        # Also allow favicon.ico which browsers request automatically
+        allowed_prefixes = ['/admin', '/login', '/logout', '/static', '/favicon.ico']
+        
+        # Check if the current request path matches any allowed prefix
+        is_allowed = any(request.path.startswith(prefix) for prefix in allowed_prefixes)
+        
+        if not is_allowed:
+            # If navigating away from admin/auth/static pages, log out
+            session.pop('is_admin', None)
 instance_path = os.path.join(basedir, 'instance')
 if not os.path.exists(instance_path):
     os.makedirs(instance_path)
