@@ -1635,15 +1635,24 @@
             });
         }
 
-        // 1. Init Flatpickr (Range Mode)
-        const fp = flatpickr("#filterDate", {
-            mode: "range",
-            locale: "ko",
-            dateFormat: "Y-m-d",
-            onChange: function (selectedDates, dateStr) {
-                applyFilters();
+        // 1. Init Flatpickr (Range Mode) - Wrapped in try-catch for CDN failure resilience
+        let fp = null;
+        try {
+            if (typeof flatpickr !== 'undefined') {
+                fp = flatpickr("#filterDate", {
+                    mode: "range",
+                    locale: "ko",
+                    dateFormat: "Y-m-d",
+                    onChange: function (selectedDates, dateStr) {
+                        applyFilters();
+                    }
+                });
+            } else {
+                console.warn("Flatpickr CDN not loaded - date filter disabled");
             }
-        });
+        } catch (e) {
+            console.error("Flatpickr init failed:", e);
+        }
 
         // 2. Populate Autocomplete
         const rows = document.querySelectorAll('.reservation-row');
@@ -1666,17 +1675,21 @@
         const searchInput = document.getElementById('filterSearch');
         const statusSelect = document.getElementById('filterStatus');
 
-        searchInput.addEventListener('input', applyFilters);
-        statusSelect.addEventListener('change', applyFilters);
+        if (searchInput) {
+            searchInput.addEventListener('input', applyFilters);
+        }
+        if (statusSelect) {
+            statusSelect.addEventListener('change', applyFilters);
+        }
 
         function applyFilters() {
             const search = searchInput.value.toLowerCase().replace(/[()]/g, '').trim();
             const status = statusSelect.value;
 
-            // Get Dates
+            // Get Dates (only if Flatpickr loaded successfully)
             let start = null;
             let end = null;
-            if (fp.selectedDates.length > 0) {
+            if (fp && fp.selectedDates && fp.selectedDates.length > 0) {
                 start = fp.formatDate(fp.selectedDates[0], "Y-m-d");
                 end = fp.selectedDates.length > 1
                     ? fp.formatDate(fp.selectedDates[1], "Y-m-d")
@@ -1711,9 +1724,9 @@
         }
 
         window.resetFilters = function () {
-            fp.clear();
-            searchInput.value = '';
-            statusSelect.value = '';
+            if (fp) fp.clear();
+            if (searchInput) searchInput.value = '';
+            if (statusSelect) statusSelect.value = '';
             applyFilters();
         }
         // Initialize
