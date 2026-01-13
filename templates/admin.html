@@ -817,9 +817,11 @@
 
     const statsTab = document.getElementById('stats-tab');
 
-    statsTab.addEventListener('shown.bs.tab', function (event) {
-        loadStats();
-    });
+    if (statsTab) {
+        statsTab.addEventListener('shown.bs.tab', function (event) {
+            loadStats();
+        });
+    }
 
     function forceReloadStats() {
         statsLoaded = false;
