@@ -1767,7 +1767,17 @@ def download_qr_poster():
     # 4. Load Fonts
     font_path = "C:/Windows/Fonts/malgun.ttf"
     bold_path = "C:/Windows/Fonts/malgunbd.ttf"
-    if not os.path.exists(font_path): font_path = "C:/Windows/Fonts/arial.ttf"
+    
+    # Check for Linux/Docker Paths (NanumGothic)
+    if not os.path.exists(font_path):
+        linux_font = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+        linux_bold = "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf"
+        if os.path.exists(linux_font):
+            font_path = linux_font
+            bold_path = linux_bold if os.path.exists(linux_bold) else linux_font
+        else:
+            font_path = "C:/Windows/Fonts/arial.ttf"
+    
     if not os.path.exists(bold_path): bold_path = font_path
 
     try:
