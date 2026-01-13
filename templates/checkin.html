@@ -181,8 +181,14 @@
             qrbox: { width: 250, height: 250 }
         };
 
+        // Scan error callback (for debugging - fires on every failed decode attempt)
+        const onScanError = (errorMessage) => {
+            // Uncomment below to see every scan attempt in console
+            // console.log("Scan attempt:", errorMessage);
+        };
+
         // Simple, robust constraints
-        html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+        html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess, onScanError)
             .then(() => {
                 isScanning = true;
                 // Switch UI only on success
