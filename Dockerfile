@@ -13,6 +13,8 @@ RUN apt-get update && apt-get install -y \
     fonts-nanum \
     wkhtmltopdf \
     libxrender1 \
+    libxext6 \
+    libfontconfig1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install
