@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y \
     zlib1g-dev \
     fonts-nanum \
     wkhtmltopdf \
+    xvfb \
     libxrender1 \
     libxext6 \
     libfontconfig1 \

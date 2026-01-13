@@ -1020,14 +1020,23 @@ def _draw_application_form(c, res, width, height):
             print(f"PDF Signature Draw Error: {e}")
 
 def _generate_pdf_buffer(res):
-    # 1. Register Font
+    # 1. Register Font (Windows or Linux) with consistent name
     font_path = "C:/Windows/Fonts/malgun.ttf"
+    
+    # Check for Linux/Docker Path (NanumGothic)
     if not os.path.exists(font_path):
-         return None
+        linux_font = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+        if os.path.exists(linux_font):
+            font_path = linux_font
+        else:
+            print("PDF Error: No suitable font found")
+            return None
          
     try:
+        # Register with consistent name 'Malgun' so _draw_application_form works
         pdfmetrics.registerFont(TTFont('Malgun', font_path))
-    except:
+    except Exception as e:
+        print(f"PDF Font Registration Error: {e}")
         pass
 
     # 2. Generate PDF
@@ -1809,20 +1818,20 @@ def download_qr_poster():
     # --- Main Title ---
     draw.text((width/2, header_height + 140), "입실 체크인", font=title_font, fill="black", anchor="mm")
     
-    # --- QR Code (Optimized Size) ---
-    qr_size = 800
+    # --- QR Code (Balanced Size) ---
+    qr_size = 650
     qr_img = qr_img.resize((qr_size, qr_size))
     qr_x = (width - qr_size) // 2
-    qr_y = header_height + 180 # Reduced gap
+    qr_y = header_height + 280 # More space for title
     canvas.paste(qr_img, (qr_x, qr_y))
 
     # --- Guide Text ---
-    text_y = qr_y + qr_size + 60 # Reduced gap
+    text_y = qr_y + qr_size + 50
     draw.text((width/2, text_y), "스마트폰 카메라를 켜고", font=desc_font, fill="#555", anchor="mm")
-    draw.text((width/2, text_y + 70), "위 QR 코드를 스캔하세요", font=desc_font, fill="#555", anchor="mm")
+    draw.text((width/2, text_y + 60), "위 QR 코드를 스캔하세요", font=desc_font, fill="#555", anchor="mm")
 
     # --- Manual Token Box ---
-    box_y = text_y + 150 # Reduced gap
+    box_y = text_y + 130
     box_width = 900
     box_height = 240
     box_x = (width - box_width) // 2
