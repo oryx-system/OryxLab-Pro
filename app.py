@@ -27,7 +27,11 @@ from werkzeug.security import generate_password_hash, check_password_hash
 load_dotenv()
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'default-dev-key-change-this-in-prod')
+# Fix for Synology Reverse Proxy (HTTPS -> HTTP)
+from werkzeug.middleware.proxy_fix import ProxyFix
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
+app.config['SECRET_KEY'] = 'dev-secret-key-change-this-in-prod'
 
 # Absolute path for DB
 basedir = os.path.abspath(os.path.dirname(__file__))
