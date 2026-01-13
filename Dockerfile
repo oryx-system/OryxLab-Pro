@@ -11,6 +11,8 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     zlib1g-dev \
     fonts-nanum \
+    wkhtmltopdf \
+    libxrender1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements and install
