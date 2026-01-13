@@ -1767,10 +1767,10 @@ def download_qr_poster():
     else:
         checkin_url = f"{host_url}checkin?door_token={door_token}"
 
-    # 2. Create QR Image
+    # 2. Create QR Image (LOW error correction = simplest pattern)
     qr = qrcode.QRCode(
         version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_M,
+        error_correction=qrcode.constants.ERROR_CORRECT_L,
         box_size=20,
         border=2,
     )
