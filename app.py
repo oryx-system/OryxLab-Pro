@@ -1932,6 +1932,49 @@ def dev_cleanup_route():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
+@app.route('/admin/diagnostics')
+def diagnostics():
+    if not session.get('is_admin'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    import shutil
+    import subprocess
+    
+    # 1. Check wkhtmltopdf
+    wkhtml_path = shutil.which('wkhtmltopdf')
+    wkhtml_version = "Not Found"
+    if wkhtml_path:
+        try:
+            wkhtml_version = subprocess.check_output([wkhtml_path, '--version'], stderr=subprocess.STDOUT).decode().strip()
+        except Exception as e:
+            wkhtml_version = f"Error: {str(e)}"
+            
+    # 2. Check Fonts
+    font_files = []
+    font_dirs = ['C:/Windows/Fonts', '/usr/share/fonts/truetype/nanum']
+    for d in font_dirs:
+        if os.path.exists(d):
+            try:
+                files = os.listdir(d)
+                font_files.append(f"{d}: Found {len(files)} files")
+            except:
+                font_files.append(f"{d}: Access Denied")
+        else:
+            font_files.append(f"{d}: Not Found")
+            
+    # 3. Check Write Permissions
+    write_check = {}
+    for p in ['instance', 'logs', 'static/uploads']:
+        write_check[p] = os.access(p, os.W_OK)
+        
+    return jsonify({
+        'wkhtmltopdf_path': wkhtml_path,
+        'wkhtmltopdf_version': wkhtml_version,
+        'fonts': font_files,
+        'write_permissions': write_check,
+        'os': os.name
+    })
+
 if __name__ == '__main__':
     with app.app_context():
         create_init_data()

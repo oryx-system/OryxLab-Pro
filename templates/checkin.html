@@ -201,17 +201,16 @@
             })
             .catch(err => {
                 console.error(err);
-                // Show Alert AND Show Fallback UI
-                showAlert('카메라를 실행할 수 없습니다.\n보안 연결(HTTPS)이 필요하거나 권한이 없습니다.\n\n[수동 인증] 모드로 전환합니다.');
+                // Show specific error on screen for debugging
+                const errorMsg = document.getElementById('scanInstruction');
+                errorMsg.innerText = `카메라 오류: ${err.name || err}`;
+                errorMsg.classList.add('text-danger');
+                errorMsg.classList.remove('blink-text');
 
-                // Force Switch UI to show Manual Input
-                document.getElementById('credentialStep').style.display = 'none';
-                document.getElementById('scannerStep').style.display = 'block';
-                document.getElementById('reader').style.display = 'none'; // Hide broken camera box
-                document.getElementById('scanInstruction').style.display = 'none';
-                document.getElementById('manualInputArea').style.display = 'block'; // Show fallback
+                // Show Fallback
+                document.getElementById('manualInputArea').style.display = 'block';
 
-                // Reset button state
+                // Reset button
                 if (btnElement) {
                     btnElement.innerHTML = originalText;
                     btnElement.disabled = false;
