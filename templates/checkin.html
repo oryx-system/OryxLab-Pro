@@ -182,13 +182,8 @@
             aspectRatio: 1.0
         };
 
-        const constraints = {
-            facingMode: "environment",
-            focusMode: "continuous"
-        };
-
-        // Prefer back camera with focus
-        html5QrCode.start(constraints, config, onScanSuccess)
+        // Simple, robust constraints
+        html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
             .then(() => {
                 isScanning = true;
                 // Switch UI only on success

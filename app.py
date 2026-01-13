@@ -1809,20 +1809,20 @@ def download_qr_poster():
     # --- Main Title ---
     draw.text((width/2, header_height + 140), "입실 체크인", font=title_font, fill="black", anchor="mm")
     
-    # --- QR Code (Maximized Size) ---
-    qr_size = 900
+    # --- QR Code (Optimized Size) ---
+    qr_size = 800
     qr_img = qr_img.resize((qr_size, qr_size))
     qr_x = (width - qr_size) // 2
-    qr_y = header_height + 220
+    qr_y = header_height + 180 # Reduced gap
     canvas.paste(qr_img, (qr_x, qr_y))
 
     # --- Guide Text ---
-    text_y = qr_y + qr_size + 80
+    text_y = qr_y + qr_size + 60 # Reduced gap
     draw.text((width/2, text_y), "스마트폰 카메라를 켜고", font=desc_font, fill="#555", anchor="mm")
     draw.text((width/2, text_y + 70), "위 QR 코드를 스캔하세요", font=desc_font, fill="#555", anchor="mm")
 
-    # --- Manual Token Box (Wider & Spaced) ---
-    box_y = text_y + 160
+    # --- Manual Token Box ---
+    box_y = text_y + 150 # Reduced gap
     box_width = 900
     box_height = 240
     box_x = (width - box_width) // 2

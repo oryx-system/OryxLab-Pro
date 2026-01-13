@@ -11,18 +11,11 @@ RUN apt-get update && apt-get install -y \
     libjpeg-dev \
     zlib1g-dev \
     fonts-nanum \
+    wkhtmltopdf \
     libxrender1 \
     libxext6 \
     libfontconfig1 \
-    wget \
-    xfonts-75dpi \
-    xfonts-base \
     && rm -rf /var/lib/apt/lists/*
-
-# Install official wkhtmltopdf (patched qt) for headless support
-RUN wget https://github.com/wkhtmltopdf/packaging/releases/download/0.12.6.1-2/wkhtmltox_0.12.6.1-2.bullseye_amd64.deb \
-    && apt-get update && apt-get install -y ./wkhtmltox_0.12.6.1-2.bullseye_amd64.deb \
-    && rm wkhtmltox_0.12.6.1-2.bullseye_amd64.deb
 
 # Verify installation
 RUN wkhtmltopdf --version
