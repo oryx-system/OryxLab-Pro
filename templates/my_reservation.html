@@ -223,31 +223,15 @@
     document.getElementById('btnSmartCheckin').addEventListener('click', function () {
         if (!currentPhone) return;
 
-        if (!confirm('현재 입실하시겠습니까?\n(예약 시간 10분 전부터 가능)')) return;
+        // Save info to be picked up by checkin.html
+        localStorage.setItem('userPhone', currentPhone);
+        const currentPw = document.getElementById('myPassword').value;
+        if (currentPw) localStorage.setItem('userPassword', currentPw);
 
-        // Disable button temp
-        this.disabled = true;
-
-        fetch('/api/checkin', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone: currentPhone })
-        })
-            .then(res => res.json())
-            .then(data => {
-                this.disabled = false;
-                if (data.success) {
-                    showAlert(`${data.name}님, 입실 확인되었습니다.`);
-                    // Refresh list to show status change
-                    loadHistory();
-                } else {
-                    showAlert('체크인 실패: ' + data.error);
-                }
-            })
-            .catch(() => {
-                this.disabled = false;
-                showAlert('서버 통신 오류');
-            });
+        // Redirect to scanner
+        if (confirm('QR 체크인 페이지로 이동하시겠습니까?\n(예약 시간 30분 전부터 가능)')) {
+            window.location.href = '/checkin';
+        }
     });
 
     // Checkout Logic

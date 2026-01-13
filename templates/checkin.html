@@ -1,4 +1,7 @@
 {% extends "base.html" %}
+{% block head %}
+<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+{% endblock %}
 
 {% block content %}
 <div class="row justify-content-center mt-5">
@@ -6,40 +9,280 @@
         <h2 class="mb-4"><i class="fas fa-qrcode"></i> QR 체크인</h2>
         <div class="card shadow">
             <div class="card-body">
-                <p>예약자 전화번호 뒷자리 또는 전체를 입력해주세요.</p>
-                <div class="mb-3">
-                    <input type="tel" id="checkinPhone" class="form-control form-control-lg text-center"
-                        placeholder="01000000000">
+                <p class="text-muted">예약된 전화번호와 비밀번호를 입력 후<br><strong>[입실 인증]</strong> 버튼을 눌러 QR코드를 스캔해주세요.</p>
+
+                <!-- Step 1: Credentials -->
+                <div id="credentialStep">
+                    <div class="mb-3">
+                        <div class="form-floating mb-3">
+                            <input type="tel" id="checkinPhone" class="form-control" placeholder="01012345678">
+                            <label for="checkinPhone">전화번호</label>
+                        </div>
+                        <div class="form-floating mb-3">
+                            <input type="password" id="checkinPw" class="form-control" placeholder="비밀번호"
+                                inputmode="numeric" pattern="[0-9]*" maxlength="4">
+                            <label for="checkinPw">예약 비밀번호 (숫자 4자리)</label>
+                        </div>
+                    </div>
+
+                    <div class="form-check mb-4 text-start">
+                        <input class="form-check-input" type="checkbox" id="rememberMe" checked>
+                        <label class="form-check-label" for="rememberMe">
+                            내 정보 기억하기
+                        </label>
+                    </div>
+
+                    <div class="d-grid">
+                        <button class="btn btn-primary btn-lg" id="btnVerifyAndScan">
+                            <i class="fas fa-qrcode me-2"></i>입실 인증 (QR스캔)
+                        </button>
+                    </div>
                 </div>
-                <button class="btn btn-success btn-lg w-100" id="btnCheckin">입실 확인</button>
+
+                <!-- Step 2: Scanner (Hidden initially) -->
+                <div id="scannerStep" style="display: none;">
+                    <div id="reader" width="100%" style="border-radius: 10px; overflow: hidden;"></div>
+                    <p class="mt-2 text-primary fw-bold blink-text" id="scanInstruction">도서관 문 앞의 QR코드를 비춰주세요</p>
+
+                    <!-- Manual Fallback (Hidden by default, shown on error) -->
+                    <div id="manualInputArea" class="mt-3 p-3 bg-light rounded border border-warning"
+                        style="display: none;">
+                        <p class="text-danger small mb-2"><i class="fas fa-exclamation-triangle me-1"></i>카메라를 실행할 수
+                            없습니다.</p>
+                        <p class="small text-muted mb-2">테스트를 위해 QR 토큰을 직접 입력할 수 있습니다.</p>
+                        <div class="input-group mb-2">
+                            <input type="text" id="manualToken" class="form-control" placeholder="QR 토큰 (예: ORYX_...)"
+                                value="ORYX_LAB_DOOR_2025">
+                            <button class="btn btn-warning" id="btnManualCheckin">수동 인증</button>
+                        </div>
+                    </div>
+
+                    <button class="btn btn-secondary w-100 mt-2" id="btnCancelScan">취소</button>
+                </div>
+
             </div>
         </div>
-        <p class="mt-3 text-muted">예약 시간 10분 전부터 체크인 가능합니다.</p>
+        <p class="mt-3 text-muted">예약 시간 30분 전부터 체크인 가능합니다.</p>
     </div>
 </div>
+
+<style>
+    @keyframes blink {
+        50% {
+            opacity: 0.5;
+        }
+    }
+
+    .blink-text {
+        animation: blink 1.5s infinite;
+    }
+</style>
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/html5-qrcode/minified/html5-qrcode.min.js"></script>
 <script>
-    document.getElementById('btnCheckin').addEventListener('click', function () {
-        const phone = document.getElementById('checkinPhone').value;
-        if (!phone) return showAlert('전화번호를 입력해주세요.');
+    let html5QrCode = null;
+    let isScanning = false;
 
+    // Mobile Detection
+    function isMobileDevice() {
+        return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+    }
+
+    // Auto-fill from localStorage and Bind Events
+    window.addEventListener('DOMContentLoaded', () => {
+        // 1. Mobile Check
+        if (!isMobileDevice()) {
+            document.querySelector('.card-body').innerHTML = `
+                <div class="text-center py-5">
+                    <i class="fas fa-mobile-alt fa-4x text-muted mb-3"></i>
+                    <h4 class="fw-bold">모바일 전용 기능입니다</h4>
+                    <p class="text-muted">PC에서는이용할 수 없습니다.<br>스마트폰으로 접속해주세요.</p>
+                    <a href="/" class="btn btn-outline-dark rounded-pill px-4 mt-2">홈으로 이동</a>
+                </div>
+            `;
+            return; // Stop execution
+        }
+
+        const checkinPhone = document.getElementById('checkinPhone');
+        const checkinPw = document.getElementById('checkinPw');
+        const rememberCheck = document.getElementById('rememberMe');
+
+        // Auto-fill (Using keys shared with index.html)
+        const savedPhone = localStorage.getItem('userPhone');
+        const savedPw = localStorage.getItem('userPassword');
+
+        if (savedPhone && checkinPhone) {
+            checkinPhone.value = savedPhone;
+            if (rememberCheck) rememberCheck.checked = true;
+        }
+        if (savedPw && checkinPw) checkinPw.value = savedPw;
+
+        // Step 1: Verify Credentials Local Validation
+        const btnVerify = document.getElementById('btnVerifyAndScan');
+        if (btnVerify) {
+            btnVerify.addEventListener('click', function () {
+                const phone = checkinPhone.value;
+                const pw = checkinPw.value;
+
+                if (!phone || !pw) return showAlert('전화번호와 비밀번호를 모두 입력해주세요.');
+
+                // Safety Check for Library & Init
+                if (typeof Html5Qrcode === "undefined") {
+                    return showAlert('QR 스캐너 라이브러리가 로드되지 않았습니다. 페이지를 새로고침해주세요.');
+                }
+
+                // Lazy Init
+                if (!html5QrCode) {
+                    try {
+                        html5QrCode = new Html5Qrcode("reader");
+                    } catch (e) {
+                        console.error(e);
+                        return showAlert('카메라 초기화 실패. 새로고침 해주세요.');
+                    }
+                }
+
+                // UI Feedback
+                const originalText = this.innerHTML;
+                this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>카메라 연결 중...';
+                this.disabled = true;
+
+                // Attempt to start scanning
+                startScanning(this, originalText);
+            });
+        }
+
+        const btnCancel = document.getElementById('btnCancelScan');
+        if (btnCancel) {
+            btnCancel.addEventListener('click', function () {
+                stopScanning();
+                document.getElementById('scannerStep').style.display = 'none';
+                document.getElementById('credentialStep').style.display = 'block';
+            });
+        }
+
+        // Manual Checkin Button Logic
+        const btnManual = document.getElementById('btnManualCheckin');
+        if (btnManual) {
+            btnManual.addEventListener('click', function () {
+                const token = document.getElementById('manualToken').value;
+                if (!token) return showAlert('QR 토큰을 입력해주세요.');
+                onScanSuccess(token, null);
+            });
+        }
+    });
+
+    function startScanning(btnElement, originalText) {
+        if (isScanning) return;
+
+        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+        // Prefer back camera
+        html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+            .then(() => {
+                isScanning = true;
+                // Switch UI only on success
+                document.getElementById('credentialStep').style.display = 'none';
+                document.getElementById('scannerStep').style.display = 'block';
+                document.getElementById('manualInputArea').style.display = 'none'; // Hide fallback if success
+
+                // Reset button state (for when we come back)
+                if (btnElement) {
+                    btnElement.innerHTML = originalText;
+                    btnElement.disabled = false;
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                // Show Alert AND Show Fallback UI
+                showAlert('카메라를 실행할 수 없습니다.\n보안 연결(HTTPS)이 필요하거나 권한이 없습니다.\n\n[수동 인증] 모드로 전환합니다.');
+
+                // Force Switch UI to show Manual Input
+                document.getElementById('credentialStep').style.display = 'none';
+                document.getElementById('scannerStep').style.display = 'block';
+                document.getElementById('reader').style.display = 'none'; // Hide broken camera box
+                document.getElementById('scanInstruction').style.display = 'none';
+                document.getElementById('manualInputArea').style.display = 'block'; // Show fallback
+
+                // Reset button state
+                if (btnElement) {
+                    btnElement.innerHTML = originalText;
+                    btnElement.disabled = false;
+                }
+            });
+    }
+
+    function stopScanning() {
+        if (isScanning && html5QrCode) {
+            html5QrCode.stop().then(() => {
+                isScanning = false;
+                html5QrCode.clear();
+            }).catch(err => console.error(err));
+        }
+    }
+
+    function onScanSuccess(decodedText, decodedResult) {
+        // Handle on success condition with the decoded message.
+        stopScanning(); // Stop camera immediately
+
+        // Unified QR Logic: Check if scanned text is a URL with door_token
+        let finalToken = decodedText;
+        try {
+            // Attempt to parse as URL
+            if (decodedText.startsWith('http')) {
+                const urlObj = new URL(decodedText);
+                const tokenParam = urlObj.searchParams.get('door_token');
+                if (tokenParam) {
+                    finalToken = tokenParam;
+                }
+            }
+        } catch (e) {
+            // Not a URL, treat as raw token
+            console.log("Scanned non-url text:", decodedText);
+        }
+
+        const phone = document.getElementById('checkinPhone').value;
+        const pw = document.getElementById('checkinPw').value;
+        const rememberMe = document.getElementById('rememberMe').checked;
+
+        // Perform Check-in API Call
         fetch('/api/checkin', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ phone: phone })
+            body: JSON.stringify({
+                phone: phone,
+                password: pw,
+                qr_token: finalToken
+            })
         })
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    showAlert(`환영합니다, ${data.name}님! 입실 처리되었습니다.`, function () {
-                        window.location.href = '/';
+                    // Save credentials logic
+                    if (rememberMe) {
+                        localStorage.setItem('userPhone', phone);
+                        localStorage.setItem('userPassword', pw);
+                    } else {
+                        localStorage.removeItem('userPhone');
+                        localStorage.removeItem('userPassword');
+                    }
+
+                    showAlert(`환영합니다, ${data.name}님!\n입실 처리가 완료되었습니다.`, function () {
+                        window.location.href = '/my';
                     });
                 } else {
-                    showAlert('체크인 실패: ' + data.error);
+                    showAlert('입실 실패:\n' + data.error, function () {
+                        // Show credentials again to retry
+                        document.getElementById('scannerStep').style.display = 'none';
+                        document.getElementById('credentialStep').style.display = 'block';
+                    });
                 }
+            })
+            .catch(err => {
+                showAlert('서버 통신 오류');
+                document.getElementById('btnCancelScan').click();
             });
-    });
+    }
 </script>
 {% endblock %}

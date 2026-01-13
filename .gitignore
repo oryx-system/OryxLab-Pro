@@ -1,0 +1,31 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Database
+# instance/  <- Commented out to verify if user wants to keep DB in git for now, but usually should be ignored.
+# For now, I will ignore *.db inside instance to be safe but keep folder structure
+instance/*.db
+*.sqlite3
+
+# Logs
+*.log
+logs/
+
+# IDES
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db

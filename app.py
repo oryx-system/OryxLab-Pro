@@ -22,6 +22,7 @@ from email.mime.text import MIMEText
 from email.mime.application import MIMEApplication
 import base64
 import binascii
+from werkzeug.security import generate_password_hash, check_password_hash
 
 load_dotenv()
 
@@ -40,7 +41,7 @@ def auto_logout_if_leaving_admin():
     
     if is_admin or is_dev:
         # Allow requests to admin/dev pages, login, logout, and static files
-        allowed_prefixes = ['/admin', '/login', '/logout', '/static', '/favicon.ico', '/developer', '/dev']
+        allowed_prefixes = ['/admin', '/login', '/logout', '/static', '/favicon.ico', '/developer', '/dev', '/api']
         
         # Check if the current request path matches any allowed prefix
         is_allowed = any(request.path.startswith(prefix) for prefix in allowed_prefixes)
@@ -105,7 +106,7 @@ class Reservation(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(50), nullable=False)
     phone = db.Column(db.String(20), nullable=False)
-    password = db.Column(db.String(20), nullable=False) # Changed from address
+    password = db.Column(db.String(200), nullable=False) # Increased length for Hash
     start_time = db.Column(db.DateTime, nullable=False)
     end_time = db.Column(db.DateTime, nullable=False)
     purpose = db.Column(db.String(200), nullable=True)
@@ -124,14 +125,24 @@ class Reservation(db.Model):
         elif len(self.name) == 2:
             masked_name = self.name[0] + '*'
         
+        # Status Colors (Premium Palette)
+        status_colors = {
+            'reserved': '#4e73df',        # Blue
+            'checked_in': '#1cc88a',      # Green
+            'ended': '#858796',           # Gray
+            'noshow_penalty': '#e74a3b',  # Red
+            'cancelled': '#f6c23e'        # Yellow (Hidden by default but defined)
+        }
+        bg_color = status_colors.get(self.status, '#4e73df')
+
         return {
             'id': self.id,
             'title': masked_name,
             'start': self.start_time.isoformat(),
             'end': self.end_time.isoformat(),
             'status': self.status,
-            'backgroundColor': '#00BFA5',
-            'borderColor': '#00BFA5',
+            'backgroundColor': bg_color,
+            'borderColor': bg_color,
             'textColor': '#ffffff'
         }
 
@@ -223,7 +234,34 @@ def index():
     notice = get_setting('notice_text', '').strip()
     if not notice:
         notice = "없음"
+    
     return render_template('index.html', notice=notice)
+
+@app.context_processor
+def inject_privacy_policy():
+    # Load Privacy Policy Globally
+    policy = get_setting('privacy_policy')
+    if not policy:
+        # Default Logic if empty
+        policy = '개인정보 처리방침 내용이 없습니다. 관리자에게 문의하세요.'
+    return dict(privacy_policy=policy)
+
+@app.route('/api/admin/settings', methods=['POST'])
+def save_admin_settings():
+    if not session.get('is_admin') and not session.get('is_dev'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.json
+    if not data or 'settings' not in data:
+        return jsonify({'error': 'Invalid data'}), 400
+        
+    for key, value in data['settings'].items():
+        set_setting(key, value)
+        
+    log_admin_action('admin', f'Updated Settings: {list(data["settings"].keys())}')
+    return jsonify({'success': True})
+
+
 
 @app.route('/my')
 def my_page():
@@ -263,7 +301,9 @@ def admin_page():
         'pause_mode': get_setting('pause_mode', 'all'),
         'pause_ranges': current_ranges,
         'telegram_token': get_setting('telegram_token', ''),
-        'telegram_chat_id': get_setting('telegram_chat_id', '')
+        'telegram_chat_id': get_setting('telegram_chat_id', ''),
+        'privacy_policy': get_setting('privacy_policy', ''),
+        'door_qr_token': get_setting('door_qr_token', 'ORYX_LAB_DOOR_2025')
     }
     
     # Fetch Feedback
@@ -284,7 +324,20 @@ def login():
         saved_admin_pw = get_setting('admin_pw', 'admin123!')
         saved_dev_pw = get_setting('dev_pw', '123qwe!')
 
-        if password == saved_admin_pw:
+        # Try verifying as hash, if fail, check plain (for legacy/default support before migration)
+        is_admin_valid = False
+        try:
+            is_admin_valid = check_password_hash(saved_admin_pw, password)
+        except:
+             is_admin_valid = (saved_admin_pw == password)
+
+        is_dev_valid = False
+        try:
+            is_dev_valid = check_password_hash(saved_dev_pw, password)
+        except:
+            is_dev_valid = (saved_dev_pw == password)
+
+        if is_admin_valid:
             session['is_admin'] = True
             log_admin_action('admin', 'Login')
             return redirect(url_for('admin_page'))
@@ -300,7 +353,15 @@ def login():
 def dev_login_endpoint():
     if request.method == 'POST':
         password = request.form.get('password')
-        if password == '123qwe!':
+        
+        saved_dev_pw = get_setting('dev_pw', '123qwe!')
+        is_valid = False
+        try:
+            is_valid = check_password_hash(saved_dev_pw, password)
+        except:
+            is_valid = (saved_dev_pw == password)
+
+        if is_valid:
             session['is_dev'] = True
             log_admin_action('dev', 'Login')
             return redirect(url_for('developer_page'))
@@ -324,8 +385,9 @@ def logout():
 
 @app.route('/api/reservations', methods=['GET'])
 def get_reservations():
+    # Include 'ended' and 'noshow_penalty' for calendar visualization
     events = Reservation.query.filter(
-        Reservation.status.in_(['reserved', 'checked_in'])
+        Reservation.status.in_(['reserved', 'checked_in', 'ended', 'noshow_penalty'])
     ).all()
     
     event_list = [e.to_dict() for e in events]
@@ -514,7 +576,7 @@ def create_reservation():
         new_res = Reservation(
             name=name.strip(),
             phone=phone.strip(),
-            password=password.strip(),
+            password=generate_password_hash(password.strip()),
             purpose=purpose.strip(),
             start_time=s_time,
             end_time=e_time,
@@ -539,7 +601,11 @@ def create_reservation():
         
         type_str = f"[정기 예약 {count}건]" if count > 1 else "[새 예약]"
         
-        msg = f"{type_str}\n- 예약자: {first_res.name}\n- 전화번호: {first_res.phone}\n- 첫 예약: {first_res.start_time.strftime('%Y-%m-%d %H:%M')}"
+        # PII Masking
+        safe_name = mask_name(first_res.name)
+        safe_phone = mask_phone(first_res.phone)
+        
+        msg = f"{type_str}\n- 예약자: {safe_name}\n- 전화번호: {safe_phone}\n- 첫 예약: {first_res.start_time.strftime('%Y-%m-%d %H:%M')}"
         if count > 1:
             msg += f"\n- 기간: {count}주간 반복"
         
@@ -593,10 +659,9 @@ def my_history_api():
     if not phone or not password:
         return jsonify({'error': '전화번호와 비밀번호가 필요합니다.'}), 400
         
-    # Match both phone and password
+    # Match phone first, then verify password
     reservations = Reservation.query.filter_by(
-        phone=phone, 
-        password=password
+        phone=phone
     ).order_by(Reservation.start_time.desc()).all()
     
     wifi_info = get_setting('wifi_info', '정보 없음')
@@ -604,16 +669,17 @@ def my_history_api():
 
     results = []
     for r in reservations:
-        results.append({
-            'id': r.id,
-            'name': r.name,
-            'purpose': r.purpose,
-            'status': r.status,
-            'start': r.start_time.strftime('%Y-%m-%d %H:%M'),
-            'end': r.end_time.strftime('%H:%M'),
-            'wifi_info': wifi_info,
-            'door_pw': door_pw
-        })
+        if check_password_hash(r.password, password):
+            results.append({
+                'id': r.id,
+                'name': r.name,
+                'purpose': r.purpose,
+                'status': r.status,
+                'start': r.start_time.strftime('%Y-%m-%d %H:%M'),
+                'end': r.end_time.strftime('%H:%M'),
+                'wifi_info': wifi_info,
+                'door_pw': door_pw
+            })
     return jsonify({'success': True, 'reservations': results, 'wifi_info': wifi_info, 'door_pw': door_pw})
 
 @app.route('/api/reservations/<int:id>/cancel', methods=['POST'])
@@ -646,26 +712,61 @@ def cancel_reservation(id):
 def checkin_process():
     data = request.json
     phone = data.get('phone')
-    if not phone:
-        return jsonify({'error': '전화번호 입력 필요'}), 400
+    password = data.get('password')
+    qr_token = data.get('qr_token')
+
+    if not phone or not password:
+        return jsonify({'error': '전화번호와 비밀번호를 모두 입력해주세요.'}), 400
+    
+    if not qr_token:
+        return jsonify({'error': 'QR 스캔이 필요합니다.'}), 400
+        
+    # Verify QR Token
+    valid_token = get_setting('door_qr_token', 'ORYX_LAB_DOOR_2025')
+    if qr_token != valid_token:
+        # Before rejecting, log it maybe?
+        return jsonify({'error': '유효하지 않은 QR 코드입니다. 도서관 출입문의 코드를 스캔해주세요.'}), 403
 
     now = datetime.now()
-    margin = timedelta(minutes=10)
+    margin = timedelta(minutes=30) # 30 mins before start
 
-    # Simple logic: Find upcoming 'reserved' event
+    # 1. Credential Check (First check if user exists/password matches ANY reservation)
+    # This separates "Authentication Error" from "No Reservation Error"
+    all_reservations = Reservation.query.filter(Reservation.phone == phone).all()
+    credential_valid = False
+    for r in all_reservations:
+        if check_password_hash(r.password, password):
+            credential_valid = True
+            break
+            
+    if not credential_valid:
+        return jsonify({'error': '전화번호 또는 비밀번호가 일치하지 않습니다.'}), 404
+
+    # 2. Status Check (Is there anything to check in?)
     candidates = Reservation.query.filter(
-        Reservation.phone.like(f'%{phone}'),
+        Reservation.phone == phone,
         Reservation.status == 'reserved'
     ).all()
     
+    valid_candidates = []
+    for c in candidates:
+        if check_password_hash(c.password, password):
+            valid_candidates.append(c)
+
+    if not valid_candidates:
+         return jsonify({'error': '체크인할 수 있는 예약 내역이 없습니다.\n(이미 체크인했거나 종료된 예약일 수 있습니다)'}), 404
+
+    # 3. Time Check
     target_res = None
-    for r in candidates:
-        if (r.start_time - margin) <= now < r.end_time:
-            target_res = r
-            break
+    for r in valid_candidates:
+        # Checkin allowed: [Start - 30min] ~ [End]
+        if (r.start_time - margin) <= now < r.end_time: 
+             target_res = r
+             break
     
     if not target_res:
-        return jsonify({'error': '현재 체크인 가능한 예약이 없습니다.'}), 404
+         # Check if too early or too late
+        return jsonify({'error': '현재 체크인 가능한 시간이 아닙니다.\n(예약 30분 전부터 이용 종료 시간까지 가능)'}), 404
         
     target_res.status = 'checked_in'
     db.session.commit()
@@ -729,6 +830,7 @@ def update_settings():
     set_setting('door_pw', data.get('door_pw', ''))
     set_setting('telegram_token', data.get('telegram_token', ''))
     set_setting('telegram_chat_id', data.get('telegram_chat_id', ''))
+    set_setting('door_qr_token', data.get('door_qr_token', 'ORYX_LAB_DOOR_2025'))
     
     return jsonify({'success': True})
 
@@ -774,7 +876,7 @@ def change_admin_password():
     if not new_pw or len(new_pw) < 4:
          return jsonify({'error': '비밀번호는 4자 이상이어야 합니다.'}), 400
          
-    set_setting('admin_pw', new_pw)
+    set_setting('admin_pw', generate_password_hash(new_pw))
     log_admin_action('admin', 'Changed Admin Password')
     
     return jsonify({'success': True})
@@ -1139,7 +1241,9 @@ def preview_pdf(id):
     res = Reservation.query.get_or_404(id)
     
     # Verify Owner
-    if res.phone != phone or res.password != password:
+    is_valid = (res.phone == phone) and check_password_hash(res.password, password)
+    
+    if not is_valid:
         return jsonify({'error': '권한이 없습니다 (정보 불일치)'}), 403
         
     buffer = _generate_pdf_buffer(res)
@@ -1162,7 +1266,9 @@ def user_send_pdf_to_admin(id):
     res = Reservation.query.get_or_404(id)
     
     # Verify Owner
-    if res.phone != phone or res.password != password:
+    is_valid = (res.phone == phone) and check_password_hash(res.password, password)
+    
+    if not is_valid:
         return jsonify({'error': '권한이 없습니다 (정보 불일치)'}), 403
         
     buffer = _generate_pdf_buffer(res)
@@ -1280,14 +1386,16 @@ def toggle_pause():
         return jsonify({'error': 'Unauthorized'}), 401
     
     data = request.json
-    should_pause = data.get('pause') # Boolean
+    print(f"DEBUG: toggle_pause called. DATA: {data}")
+    is_paused = data.get('pause', False)
+    print(f"DEBUG: is_paused resolved to: {is_paused} (type: {type(is_paused)})")
     reason = data.get('reason', '').strip()
     mode = data.get('mode', 'all')
     
     # List of {start: '...', end: '...'}
     ranges = data.get('ranges', []) 
     
-    if should_pause:
+    if is_paused:
         import json
         set_setting('reservation_paused', 'true')
         set_setting('pause_reason', reason)
@@ -1548,6 +1656,34 @@ def download_logs_db():
 
 import qrcode
 
+def generate_random_color():
+    return f"#{random.randint(0, 0xFFFFFF):06x}"
+
+def mask_name(name):
+    if not name or len(name) < 2: return name
+    if len(name) == 2: return name[0] + "*"
+    # Hong Gil Dong -> Hong * Dong
+    return name[0] + "*" * (len(name) - 2) + name[-1]
+
+def mask_phone(phone):
+    if not phone: return phone
+    
+    # Remove all non-digit characters
+    clean_phone = ''.join(filter(str.isdigit, phone))
+    
+    # 010-1234-5678 (11 digits)
+    if len(clean_phone) == 11:
+        return f"{clean_phone[:3]}-****-{clean_phone[7:]}"
+    # 010-123-4567 (10 digits)
+    elif len(clean_phone) == 10:
+        return f"{clean_phone[:3]}-***-{clean_phone[6:]}"
+        
+    # Fallback for weird formats (just mask last 4 chars if long enough)
+    if len(phone) > 4:
+        return phone[:-4] + "****"
+        
+    return phone # Too short to mask
+
 @app.route('/admin/qr_code')
 def generate_qr_code():
     if not session.get('is_admin'):
@@ -1577,12 +1713,27 @@ def generate_qr_code():
     
     return send_file(output, mimetype='image/png')
 
+@app.route('/admin/door_qr')
+def generate_door_qr():
+    if not session.get('is_admin'):
+        return redirect(url_for('login'))
+        
+    token = get_setting('door_qr_token', 'ORYX_LAB_DOOR_2025')
+    
+    img = qrcode.make(token)
+    output = io.BytesIO()
+    img.save(output, format='PNG')
+    output.seek(0)
+    return send_file(output, mimetype='image/png')
+
 @app.route('/admin/download_qr_poster')
 def download_qr_poster():
     if not session.get('is_admin'):
         return redirect(url_for('login'))
 
-    # 1. Generate QR URL
+    # 1. Generate QR URL (Unified)
+    door_token = get_setting('door_qr_token', 'ORYX_LAB_DOOR_2025')
+    
     host_url = request.host_url
     if 'localhost' in host_url or '127.0.0.1' in host_url:
         import socket
@@ -1591,11 +1742,11 @@ def download_qr_poster():
             s.connect(("8.8.8.8", 80))
             local_ip = s.getsockname()[0]
             s.close()
-            checkin_url = f"http://{local_ip}:5000/checkin"
+            checkin_url = f"http://{local_ip}:5000/checkin?door_token={door_token}"
         except:
-            checkin_url = f"{host_url}checkin"
+            checkin_url = f"{host_url}checkin?door_token={door_token}"
     else:
-        checkin_url = f"{host_url}checkin"
+        checkin_url = f"{host_url}checkin?door_token={door_token}"
 
     # 2. Create QR Image
     qr = qrcode.QRCode(
@@ -1608,62 +1759,76 @@ def download_qr_poster():
     qr.make(fit=True)
     qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGBA')
 
-    # 3. Create A4 Canvas (approx 150 DPI: 1240 x 1754)
-    # White background
+    # 3. Create A4 Canvas (High Quality)
     width, height = 1240, 1754
     canvas = Image.new('RGB', (width, height), 'white')
     draw = ImageDraw.Draw(canvas)
 
-    # 4. Load Fonts (Windows default Korean font)
-    # Using 'malgun.ttf' (Malgun Gothic)
+    # 4. Load Fonts
     font_path = "C:/Windows/Fonts/malgun.ttf"
-    if not os.path.exists(font_path):
-        font_path = "C:/Windows/Fonts/malgunbd.ttf" # Try bold
-    
+    bold_path = "C:/Windows/Fonts/malgunbd.ttf"
+    if not os.path.exists(font_path): font_path = "C:/Windows/Fonts/arial.ttf"
+    if not os.path.exists(bold_path): bold_path = font_path
+
     try:
-        title_font = ImageFont.truetype(font_path, 120)
-        subtitle_font = ImageFont.truetype(font_path, 60)
-        desc_font = ImageFont.truetype(font_path, 40)
-        small_font = ImageFont.truetype(font_path, 30)
-    except IOError:
-        # Fallback if no font found (should not happen on standard Windows)
+        header_font = ImageFont.truetype(bold_path, 70)
+        title_font = ImageFont.truetype(bold_path, 110)
+        desc_font = ImageFont.truetype(font_path, 45)
+        token_label_font = ImageFont.truetype(bold_path, 40)
+        token_font = ImageFont.truetype(bold_path, 60)
+        footer_font = ImageFont.truetype(font_path, 30)
+    except:
+        header_font = ImageFont.load_default()
         title_font = ImageFont.load_default()
-        subtitle_font = ImageFont.load_default()
         desc_font = ImageFont.load_default()
-        small_font = ImageFont.load_default()
+        token_label_font = ImageFont.load_default()
+        token_font = ImageFont.load_default()
+        footer_font = ImageFont.load_default()
 
     # 5. Draw Content
-    # Border
-    border_px = 50
-    draw.rectangle([border_px, border_px, width-border_px, height-border_px], outline="black", width=10)
+    
+    # --- Header Section (Increased breathing room) ---
+    header_height = 180
+    draw.rectangle([0, 0, width, header_height], fill="#003366")
+    draw.text((width/2, header_height/2), "지혜마루 작은 도서관", font=header_font, fill="white", anchor="mm")
 
-    # Title
-    draw.text((width/2, 200), "지혜마루 작은 도서관", font=subtitle_font, fill="black", anchor="mm")
-    draw.text((width/2, 350), "입실 체크인", font=title_font, fill="#0056b3", anchor="mm")
-
-    # Place QR
-    # Resize QR to fit nicely (e.g. 800x800)
-    qr_size = 800
+    # --- Main Title ---
+    draw.text((width/2, header_height + 140), "입실 체크인", font=title_font, fill="black", anchor="mm")
+    
+    # --- QR Code (Balanced Size) ---
+    qr_size = 700
     qr_img = qr_img.resize((qr_size, qr_size))
     qr_x = (width - qr_size) // 2
-    qr_y = 500
-    canvas.paste(qr_img, (qr_x, qr_y), qr_img)
+    qr_y = header_height + 250
+    canvas.paste(qr_img, (qr_x, qr_y))
 
-    # Instructions
-    text_y = qr_y + qr_size + 100
-    draw.text((width/2, text_y), "스마트폰 카메라를 켜고", font=desc_font, fill="#333", anchor="mm")
-    draw.text((width/2, text_y + 60), "위 QR 코드를 스캔하세요", font=desc_font, fill="#333", anchor="mm")
+    # --- Guide Text ---
+    text_y = qr_y + qr_size + 80
+    draw.text((width/2, text_y), "스마트폰 카메라를 켜고", font=desc_font, fill="#555", anchor="mm")
+    draw.text((width/2, text_y + 70), "위 QR 코드를 스캔하세요", font=desc_font, fill="#555", anchor="mm")
+
+    # --- Manual Token Box (Wider & Spaced) ---
+    box_y = text_y + 160
+    box_width = 900
+    box_height = 240
+    box_x = (width - box_width) // 2
     
-    # Detail
-    draw.text((width/2, text_y + 180), "예약된 전화번호로 인증 후 입실할 수 있습니다.", font=small_font, fill="#666", anchor="mm")
-    draw.text((width/2, text_y + 230), "문의: 관리자 호출", font=small_font, fill="#999", anchor="mm")
+    # Light Blue Box
+    draw.rectangle([box_x, box_y, box_x + box_width, box_y + box_height], fill="#F0F8FF", outline="#003366", width=3)
+    
+    # Box Content
+    draw.text((width/2, box_y + 70), "카메라 오류 시 수동 입력 코드", font=token_label_font, fill="#E74C3C", anchor="mm")
+    draw.text((width/2, box_y + 160), door_token, font=token_font, fill="#003366", anchor="mm")
 
+    # --- Footer ---
+    draw.text((width/2, height - 80), "문의: 관리자 호출", font=footer_font, fill="#999", anchor="mm")
+    
     # 6. Save
     output = io.BytesIO()
     canvas.save(output, format='PNG')
     output.seek(0)
-
-    return send_file(output, mimetype='image/png', as_attachment=True, download_name='checkin_poster_a4.png')
+    
+    return send_file(output, mimetype='image/png', as_attachment=True, download_name='checkin_poster_complete.png')
     
 def create_init_data():
     if not os.path.exists('instance'):
@@ -1679,6 +1844,83 @@ def create_init_data():
         set_setting('notice_text', '지혜마루 작은 도서관에 오신 것을 환영합니다.')
         set_setting('wifi_info', 'ID: JihyeLib / PW: readbooks')
         set_setting('door_pw', '1234*')
+
+def perform_cleanup(days=365):
+    cutoff_date = datetime.now() - timedelta(days=days)
+    print(f"Cleanup Started. Cutoff: {cutoff_date}")
+    
+    # 1. Find Old Reservations (Anonymize instead of Delete)
+    old_reservations = Reservation.query.filter(Reservation.end_time < cutoff_date).all()
+    
+    deleted_files = 0
+    anonymized_count = 0
+    
+    for res in old_reservations:
+        # Skip if already anonymized
+        if res.name == '정보삭제' and res.phone == '000-0000-0000':
+            continue
+
+        # Delete Signature File
+        if res.signature_path:
+            try:
+                sig_path = os.path.join(instance_path, 'signatures', res.signature_path)
+                if os.path.exists(sig_path):
+                    os.remove(sig_path)
+                    deleted_files += 1
+            except Exception as e:
+                print(f"Error deleting signature {res.id}: {e}")
+                
+        # Delete Checkout Photo
+        if res.checkout_photo:
+            try:
+                photo_path = os.path.join(basedir, 'static', 'uploads', res.checkout_photo)
+                if os.path.exists(photo_path):
+                    os.remove(photo_path)
+                    deleted_files += 1
+            except Exception as e:
+                print(f"Error deleting photo {res.id}: {e}")
+        
+        # Anonymize DB Record (Keep ID, Date, Status for Stats)
+        res.name = '정보삭제'
+        res.phone = '000-0000-0000'
+        res.password = 'deleted' # Dummy header for hash check failure
+        res.purpose = '보존 기한 경과로 데이터 파기됨'
+        res.signature_path = None
+        res.signature_blob = None
+        res.checkout_photo = None
+        res.admin_memo = f"Personal data anonymized on {datetime.now().strftime('%Y-%m-%d')} (Policy: {days} days)"
+        
+        anonymized_count += 1
+        
+    # 2. Find Old Logs (Hard Delete Logs)
+    old_access_logs = AccessLog.query.filter(AccessLog.timestamp < cutoff_date).delete()
+    old_error_logs = ErrorLog.query.filter(ErrorLog.timestamp < cutoff_date).delete()
+    old_admin_logs = AdminLog.query.filter(AdminLog.timestamp < cutoff_date).delete()
+    
+    deleted_logs = old_access_logs + old_error_logs + old_admin_logs
+    
+    db.session.commit()
+    
+    log_msg = f"Auto Cleanup executed. Anonymized {anonymized_count} reservations, Deleted {deleted_files} files, {deleted_logs} logs."
+    print(log_msg)
+    log_admin_action('dev', log_msg)
+    
+    return anonymized_count, deleted_logs
+
+@app.route('/dev/cleanup', methods=['POST'])
+def dev_cleanup_route():
+    if not session.get('is_dev'): return jsonify({'error': 'Unauthorized'}), 401
+    
+    try:
+        anonymized, logs = perform_cleanup(days=365)
+        return jsonify({
+            'success': True, 
+            'deleted_count': anonymized, 
+            'deleted_logs': logs
+        })
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     with app.app_context():

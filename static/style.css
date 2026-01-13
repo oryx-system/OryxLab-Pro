@@ -410,109 +410,109 @@ h6 {
         margin: 0 !important;
         border: none !important;
     }
-}
 
-h4 {
-    font-size: 1.2rem;
-}
 
-h5 {
-    font-size: 1.1rem;
-}
+    h4 {
+        font-size: 1.2rem;
+    }
 
-.fs-5 {
-    font-size: 1rem !important;
-}
+    h5 {
+        font-size: 1.1rem;
+    }
 
-/* 4. Inputs & Buttons (Touch Targets) */
-.btn,
-.form-control,
-.form-select,
-.input-group-text {
-    min-height: 48px;
-    /* Slightly larger for thumb */
-    font-size: 1rem;
-}
+    .fs-5 {
+        font-size: 1rem !important;
+    }
 
-.btn-sm {
-    min-height: 36px;
-    font-size: 0.85rem;
-}
+    /* 4. Inputs & Buttons (Touch Targets) */
+    .btn,
+    .form-control,
+    .form-select,
+    .input-group-text {
+        min-height: 48px;
+        /* Slightly larger for thumb */
+        font-size: 1rem;
+    }
 
-/* 5. Components */
-.notice-banner {
-    padding: 12px;
-    margin-bottom: 1rem !important;
-    flex-direction: row;
-    /* Keep row but tighter */
-}
+    .btn-sm {
+        min-height: 36px;
+        font-size: 0.85rem;
+    }
 
-.notice-banner h5 {
-    font-size: 1rem;
-    margin-bottom: 0.2rem;
-}
+    /* 5. Components */
+    .notice-banner {
+        padding: 12px;
+        margin-bottom: 1rem !important;
+        flex-direction: row;
+        /* Keep row but tighter */
+    }
 
-.notice-banner p {
-    font-size: 0.85rem;
-}
+    .notice-banner h5 {
+        font-size: 1rem;
+        margin-bottom: 0.2rem;
+    }
 
-/* 6. Calendar Toolbar Stacking */
-.fc-toolbar {
-    flex-direction: row !important;
-    flex-wrap: wrap !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    gap: 0.5rem;
-}
+    .notice-banner p {
+        font-size: 0.85rem;
+    }
 
-.fc-toolbar-chunk {
-    display: flex;
-    align-items: center;
-}
+    /* 6. Calendar Toolbar Stacking */
+    .fc-toolbar {
+        flex-direction: row !important;
+        flex-wrap: wrap !important;
+        justify-content: space-between !important;
+        align-items: center !important;
+        gap: 0.5rem;
+    }
 
-/* Left Controls (Prev/Next) */
-.fc-toolbar-chunk:nth-child(1) {
-    order: 2;
-    /* Place after Title */
-}
+    .fc-toolbar-chunk {
+        display: flex;
+        align-items: center;
+    }
 
-/* Title (Center -> First) */
-.fc-toolbar-chunk:nth-child(2) {
-    order: 1;
-    /* First */
-    margin-bottom: 0 !important;
-    width: auto !important;
-    /* Allow shrinking */
-}
+    /* Left Controls (Prev/Next) */
+    .fc-toolbar-chunk:nth-child(1) {
+        order: 2;
+        /* Place after Title */
+    }
 
-/* Right Controls (Views) -> New Line */
-.fc-toolbar-chunk:nth-child(3) {
-    order: 3;
-    width: 100%;
-    justify-content: flex-end;
-    /* Align right on new line */
-    margin-top: 5px;
-}
+    /* Title (Center -> First) */
+    .fc-toolbar-chunk:nth-child(2) {
+        order: 1;
+        /* First */
+        margin-bottom: 0 !important;
+        width: auto !important;
+        /* Allow shrinking */
+    }
 
-.fc-toolbar-title {
-    font-size: 1.3rem !important;
-}
+    /* Right Controls (Views) -> New Line */
+    .fc-toolbar-chunk:nth-child(3) {
+        order: 3;
+        width: 100%;
+        justify-content: flex-end;
+        /* Align right on new line */
+        margin-top: 5px;
+    }
 
-/* 7. Modal Full Widthish */
-.modal-dialog {
-    margin: 0.5rem;
-}
+    .fc-toolbar-title {
+        font-size: 1.3rem !important;
+    }
 
-/* 8. Table/List Adjustments */
-.list-group-item {
-    padding: 0.75rem 1rem;
-}
+    /* 7. Modal Full Widthish */
+    .modal-dialog {
+        margin: 0.5rem;
+    }
 
-/* 9. Calendar Specific */
-#calendar {
-    padding: 0.5rem !important;
-    /* Reduce from p-3 */
-}
+    /* 8. Table/List Adjustments */
+    .list-group-item {
+        padding: 0.75rem 1rem;
+    }
+
+    /* 9. Calendar Specific */
+    #calendar {
+        padding: 0.5rem !important;
+        /* Reduce from p-3 */
+    }
 }
 
 /* --- PC View: User Feedback Modal Position (Bottom Right) --- */

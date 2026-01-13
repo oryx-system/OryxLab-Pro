@@ -64,6 +64,22 @@
             </div>
         </div>
     </div>
+
+    <!-- Data Cleanup Card -->
+    <div class="col-md-12 col-lg-12">
+        <div class="card shadow-sm border-0 bg-light">
+            <div class="card-body d-flex align-items-center justify-content-between">
+                <div>
+                    <h6 class="text-dark fw-bold mb-1"><i class="fas fa-shield-alt text-primary me-2"></i>개인정보 데이터 관리
+                        (Retention Policy)</h6>
+                    <p class="mb-0 small text-muted">보존 기간(1년)이 지난 개인정보를 파기합니다. (예약 이력은 통계용으로 보존됨)</p>
+                </div>
+                <button class="btn btn-outline-danger btn-sm rounded-pill px-4" id="btnCleanup">
+                    <i class="fas fa-trash-restore me-1"></i>오래된 개인정보 파기
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 </div>
 
@@ -404,6 +420,35 @@
                             if (btnCheck) btnCheck.click(); // Re-run check
                         });
                     }
+                });
+        });
+    }
+
+    // Cleanup Logic
+    const btnCleanup = document.getElementById('btnCleanup');
+    if (btnCleanup) {
+        btnCleanup.addEventListener('click', function () {
+            if (!confirm('보존 기간(1년)이 지난 개인정보를 파기하시겠습니까?\n(이름/전화번호 등은 삭제되고 통계용 이력만 남습니다.)')) return;
+
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>정리 중...';
+
+            fetch('/dev/cleanup', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-trash-restore me-1"></i>오래된 개인정보 파기';
+
+                    if (data.success) {
+                        showAlert(`개인정보 파기가 완료되었습니다.\n- 익명화된 예약: ${data.deleted_count}건\n- 삭제된 로그: ${data.deleted_logs}건`);
+                    } else {
+                        showAlert('정리 실패: ' + data.error);
+                    }
+                })
+                .catch(() => {
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-trash-restore me-1"></i>오래된 개인정보 파기';
+                    showAlert('서버 통신 오류');
                 });
         });
     }

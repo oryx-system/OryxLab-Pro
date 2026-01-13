@@ -44,6 +44,10 @@
             data-bs-target="#notification" type="button"><i class="fas fa-bell me-1"></i>알림 설정</button>
     </li>
     <li class="nav-item" role="presentation">
+        <button class="nav-link fw-bold text-secondary" id="terms-tab" data-bs-toggle="tab" data-bs-target="#terms"
+            type="button"><i class="fas fa-file-alt me-1"></i>약관 관리</button>
+    </li>
+    <li class="nav-item" role="presentation">
         <button class="nav-link fw-bold text-primary" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats"
             type="button"><i class="fas fa-chart-pie me-1"></i>통계</button>
     </li>
@@ -80,11 +84,24 @@
                             <input type="text" id="filterDate" class="form-control form-control-sm bg-white"
                                 placeholder="모든 날짜 보기">
                         </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-bold text-muted mb-1"><i class="fas fa-filter me-1"></i>상태
+                                필터</label>
+                            <select id="filterStatus" class="form-select form-select-sm">
+                                <option value="">전체 보기</option>
+                                <option value="reserved">예약중</option>
+                                <option value="checked_in">이용중</option>
+                                <option value="ended">종료됨</option>
+                                <option value="cancelled">취소됨</option>
+                                <option value="noshow_penalty">노쇼</option>
+                                <option value="blocked">차단됨</option>
+                            </select>
+                        </div>
                         <div class="col-md-4">
                             <label class="form-label small fw-bold text-muted mb-1"><i class="fas fa-search me-1"></i>빠른
                                 검색</label>
                             <input type="text" id="filterSearch" class="form-control form-control-sm"
-                                list="reservationOptions" placeholder="이름 또는 전화번호 (자동완성)">
+                                list="reservationOptions" placeholder="이름, 전화번호, 상태(예약/취소/종료)">
                             <datalist id="reservationOptions"></datalist>
                         </div>
                         <div class="col-md-2">
@@ -111,7 +128,8 @@
                             {% for r in reservations %}
                             <tr class="reservation-row" data-date="{{ r.start_time.strftime('%Y-%m-%d') }}"
                                 data-name="{{ r.name }}" data-phone="{{ r.phone }}"
-                                data-search="{{ r.name }} {{ r.phone }}">
+                                data-status="{% if r.phone in blocked_phones %}blocked{% else %}{{ r.status }}{% endif %}"
+                                data-search="{{ r.name }} {{ r.phone }} {% if r.status == 'reserved' %}예약중 예약됨{% elif r.status == 'checked_in' %}체크인 이용중 입실완료{% elif r.status == 'ended' %}종료 이용완료{% elif r.status == 'cancelled' %}취소 취소됨{% elif r.status == 'noshow_penalty' %}노쇼{% endif %} {% if r.phone in blocked_phones %}차단 차단됨{% endif %}">
                                 <td>
                                     {% if r.status == 'reserved' %}<span class="badge bg-primary">예약중</span>
                                     {% elif r.status == 'checked_in' %}<span class="badge bg-success">체크인</span>
@@ -197,7 +215,7 @@
                         <i class="fas fa-calendar-week me-2 text-success"></i>요일별 이용 추이 (최근 전체)
                     </div>
                     <div class="card-body">
-                        <canvas id="weeklyChart"></canvas>
+                        <canvas id="weeklyChart" style="min-height: 320px;"></canvas>
                     </div>
                 </div>
             </div>
@@ -298,24 +316,25 @@
 
                 <hr class="my-5">
 
-                <h5 class="fw-bold mb-4">체크인용 OQ(QR) 코드</h5>
+                <h5 class="fw-bold mb-4">통합 체크인 QR 코드</h5>
                 <div class="text-center bg-light p-4 rounded-3 border">
-                    <p class="mb-3 text-muted">이 코드를 인쇄하여 도서관 입구에 부착하세요.<br>이용자가 스캔하면 체크인 페이지로 이동합니다.</p>
+                    <p class="mb-3 text-muted">
+                        이 코드를 인쇄하여 도서관 입구에 부착하세요.<br>
+                        <strong>페이지 접속</strong>과 <strong>입실 인증</strong>이 모두 가능한 통합 QR입니다.<br>
+                        <span class="text-danger small">(카메라 오류 시 사용할 수 있는 수동 인증 코드도 함께 인쇄됩니다)</span>
+                    </p>
                     <div class="bg-white p-3 d-inline-block shadow-sm rounded mb-3">
                         <img src="/admin/qr_code" alt="Check-in QR Code" class="img-fluid" style="max-width: 200px;">
                     </div>
                     <div>
                         <a href="/admin/download_qr_poster" class="btn btn-primary">
-                            <i class="fas fa-print me-1"></i>A4 포스터 다운로드 (인쇄용)
+                            <i class="fas fa-print me-1"></i>통합 포스터 다운로드 (A4)
                         </a>
                     </div>
-
                 </div>
             </div>
         </div>
     </div>
-
-    <!-- Feedback Tab -->
     <div class="tab-pane fade" id="feedback" role="tabpanel">
         <div class="card shadow">
             <div class="card-header bg-white py-3">
@@ -479,7 +498,6 @@
                         </div>
                     </div>
                 </div>
-
             </div>
         </div>
     </div>
@@ -490,7 +508,9 @@
             <div class="col-md-10">
                 <div class="card shadow mb-4">
                     <div class="card-header bg-white py-3">
-                        <h5 class="mb-0 fw-bold text-success"><i class="fas fa-envelope me-2"></i>이메일 전송 설정 (담당자 보고용)
+                        <h5 class="mb-0 fw-bold text-success"><i class="fas fa-envelope me-2"></i>이메일 전송 설정
+                            (담당자
+                            보고용)
                         </h5>
                     </div>
                     <div class="card-body">
@@ -507,9 +527,12 @@
                                 <div id="collapseSmtp" class="accordion-collapse collapse" data-bs-parent="#smtpGuide">
                                     <div class="accordion-body bg-light">
                                         <div class="alert alert-info border-0 mb-3 small">
-                                            <i class="fas fa-shield-alt me-2"></i><strong>보안 및 안정성 팁</strong><br>
-                                            입력하신 비밀번호는 서버에 저장되지만, 만약의 경우를 대비하여 <strong>개인 주계정(본인 메일)보다는 알림 전용
-                                                부계정</strong>(예: <code>library_alarm@gmail.com</code>)을 새로 하나 만드시는 것을 강력
+                                            <i class="fas fa-shield-alt me-2"></i><strong>보안 및 안정성
+                                                팁</strong><br>
+                                            입력하신 비밀번호는 서버에 저장되지만, 만약의 경우를 대비하여 <strong>개인 주계정(본인 메일)보다는 알림
+                                                전용
+                                                부계정</strong>(예: <code>library_alarm@gmail.com</code>)을 새로 하나
+                                            만드시는 것을 강력
                                             추천합니다.<br>
                                             전용 계정을 쓰면 개인정보 유출 걱정 없이 훨씬 안전하고 안정적으로 전송할 수 있습니다.
                                         </div>
@@ -520,11 +543,15 @@
                                                 <ol class="small mb-0" style="line-height: 1.6;">
                                                     <li>네이버 메일 접속 -> 하단 [환경설정] 클릭</li>
                                                     <li>[POP3/IMAP 설정] 메뉴 -> [SMTP 사용함] 선택</li>
-                                                    <li><strong>SMTP 서버명</strong>: <code>smtp.naver.com</code></li>
+                                                    <li><strong>SMTP 서버명</strong>:
+                                                        <code>smtp.naver.com</code>
+                                                    </li>
                                                     <li><strong>SMTP 포트</strong>: <code>587</code></li>
                                                     <li><strong>아이디</strong>: 네이버 아이디 (aaa@naver.com)</li>
                                                     <li><strong>비밀번호</strong>: 네이버 로그인 비밀번호<br>
-                                                        <span class="text-muted">(※ 2단계 인증 사용중이면 '애플리케이션 비밀번호'를 생성해서
+                                                        <span class="text-muted">(※ 2단계 인증 사용중이면 '애플리케이션
+                                                            비밀번호'를
+                                                            생성해서
                                                             입력해야 합니다)</span>
                                                     </li>
                                                 </ol>
@@ -535,9 +562,13 @@
                                                 <ol class="small mb-0" style="line-height: 1.6;">
                                                     <li>구글 계정 관리 -> [보안] 탭 이동</li>
                                                     <li>[2단계 인증]을 켜야 합니다.</li>
-                                                    <li>검색창에 <strong>'앱 비밀번호'</strong> 검색 -> 생성 (이름: 지혜마루 등)</li>
-                                                    <li><strong>생성된 16자리 비밀번호</strong>를 복사해두세요. (로그인 비번 아님!)</li>
-                                                    <li><strong>SMTP 서버명</strong>: <code>smtp.gmail.com</code></li>
+                                                    <li>검색창에 <strong>'앱 비밀번호'</strong> 검색 -> 생성 (이름: 지혜마루 등)
+                                                    </li>
+                                                    <li><strong>생성된 16자리 비밀번호</strong>를 복사해두세요. (로그인 비번 아님!)
+                                                    </li>
+                                                    <li><strong>SMTP 서버명</strong>:
+                                                        <code>smtp.gmail.com</code>
+                                                    </li>
                                                     <li><strong>SMTP 포트</strong>: <code>587</code></li>
                                                 </ol>
                                             </div>
@@ -643,6 +674,51 @@
             </div>
         </div>
     </div>
+
+    <!-- Terms Management Tab -->
+    <div class="tab-pane fade" id="terms" role="tabpanel">
+        <div class="card shadow">
+            <div class="card-header bg-white py-3">
+                <h5 class="mb-0 fw-bold"><i class="fas fa-file-alt me-2 text-secondary"></i>약관 및 개인정보 처리방침
+                    설정
+                </h5>
+            </div>
+            <div class="card-body">
+                <div class="mb-3 text-end">
+                    <input type="file" id="txtFileInput" accept=".txt" style="display: none;">
+                    <input type="file" id="htmlFileInput" accept=".html" style="display: none;">
+
+                    <button class="btn btn-outline-secondary btn-sm me-2" id="btnImportTxt">
+                        <i class="fas fa-file-upload"></i> TXT 불러오기
+                    </button>
+                    <button class="btn btn-outline-secondary btn-sm me-2" id="btnExportTxt">
+                        <i class="fas fa-file-download"></i> TXT 내보내기
+                    </button>
+
+                    <button class="btn btn-outline-primary btn-sm me-2" id="btnImportHtml">
+                        <i class="fas fa-file-code"></i> HTML 불러오기
+                    </button>
+                    <button class="btn btn-outline-primary btn-sm me-2" id="btnExportHtml">
+                        <i class="fas fa-file-code"></i> HTML 내보내기
+                    </button>
+
+                    <button class="btn btn-outline-secondary btn-sm" id="btnLoadTemplate">기본 양식
+                        불러오기</button>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">개인정보 처리방침 내용</label>
+                    <textarea class="form-control" id="privacyPolicy"
+                        rows="15">{{ settings.privacy_policy or '' }}</textarea>
+                    <div class="form-text">예약 시 사용자에게 보여지는 약관 내용입니다. HTML 태그 사용 가능.</div>
+                </div>
+                <div class="text-end">
+                    <button class="btn btn-primary px-4" id="btnSaveTerms">
+                        <i class="fas fa-save me-1"></i>약관 저장
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Password Change Modal -->
@@ -670,7 +746,68 @@
     </div>
 </div>
 
+<!-- Summernote Lite CSS -->
+<style>
+    /* Fix Summernote Lite Z-Index Conflict with Bootstrap 5 */
+    .note-modal-backdrop {
+        display: none !important;
+        /* Nuclear option: Hide the backdrop that's covering the modal */
+    }
+
+    .note-modal {
+        z-index: 2050 !important;
+        /* Ensure modal itself is on top */
+        display: block;
+        /* Ensure it's treated as visible */
+    }
+
+    .note-dialog {
+        z-index: 2060 !important;
+    }
+
+    /* Fix Fullscreen Mode */
+    /* Fix Fullscreen Mode */
+    .note-editor.note-frame.fullscreen {
+        position: fixed !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100vw !important;
+        height: 100vh !important;
+        z-index: 9999 !important;
+        /* Max Z-index */
+        background-color: white !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+    }
+
+    /* Ensure editable area fills the screen minus toolbar */
+    .note-editor.note-frame.fullscreen .note-editable {
+        height: calc(100vh - 80px) !important;
+        background-color: white !important;
+    }
+
+    /* Fix Modal Button Clipping */
+    .note-modal-footer {
+        box-sizing: content-box !important;
+        padding: 20px !important;
+        min-height: 60px !important;
+    }
+
+    .note-modal-content {
+        overflow: visible !important;
+    }
+</style>
+<link href="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.css" rel="stylesheet">
+<!-- jQuery (required by Summernote) -->
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<!-- Bootstrap JS removed (already loaded in base.html) -->
+<!-- Summernote Lite JS -->
+<script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/summernote-lite.min.js"></script>
+<!-- Summernote Korean Language Pack -->
+<script src="https://cdn.jsdelivr.net/npm/summernote@0.8.18/dist/lang/summernote-ko-KR.min.js"></script>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
 <script>
     // Stats Logic
     let statsLoaded = false;
@@ -721,7 +858,10 @@
         if (weeklyChart) weeklyChart.destroy();
         if (hourlyChart) hourlyChart.destroy();
 
-        // 1. Status Pie
+        // Register Plugin
+        try { Chart.register(ChartDataLabels); } catch (e) { }
+
+        // --- 1. Status Pie (Premium Pastel Palette) ---
         const ctxStatus = document.getElementById('statusChart').getContext('2d');
         const statusMap = {
             'reserved': '예약중', 'checked_in': '이용중', 'ended': '종료',
@@ -730,22 +870,60 @@
         const statusLabels = Object.keys(data.status).map(k => statusMap[k] || k);
         const statusValues = Object.values(data.status);
 
+        // Premium Palette
+        const statusColors = ['#4e73df', '#1cc88a', '#858796', '#f6c23e', '#e74a3b'];
+
         statusChart = new Chart(ctxStatus, {
             type: 'doughnut',
             data: {
                 labels: statusLabels,
                 datasets: [{
                     data: statusValues,
-                    backgroundColor: ['#0d6efd', '#198754', '#6c757d', '#ffc107', '#dc3545'],
+                    backgroundColor: statusColors,
+                    borderWidth: 0,
+                    hoverOffset: 15,
+                    borderRadius: 0, // No rounded corners
+                    spacing: 0 // No spacing - SOLID ring
                 }]
+            },
+            options: {
+                cutout: '60%', // Thicker ring
+                animation: {
+                    animateScale: true,
+                    animateRotate: true,
+                    duration: 1500,
+                    easing: 'easeOutQuart'
+                },
+                plugins: {
+                    datalabels: {
+                        color: '#fff',
+                        font: { weight: 'bold', size: 12 },
+                        formatter: (value, ctx) => {
+                            return value > 0 ? value : '';
+                        }
+                    },
+                    legend: {
+                        position: 'bottom',
+                        labels: {
+                            usePointStyle: true,
+                            padding: 20,
+                            font: { family: "'Noto Sans KR', sans-serif" }
+                        }
+                    }
+                }
             }
         });
 
-        // 2. Weekly Bar
+        // --- 2. Weekly Bar (Gradient + Rounded) ---
         const ctxWeekly = document.getElementById('weeklyChart').getContext('2d');
+        // Create Gradient
+        const gradientWeekly = ctxWeekly.createLinearGradient(0, 0, 0, 400);
+        gradientWeekly.addColorStop(0, '#36b9cc'); // Info Color
+        gradientWeekly.addColorStop(1, '#4e73df'); // Primary Color
+
         const days = ['월', '화', '수', '목', '금', '토', '일'];
-        // Fix: Use generic access for string/int keys
         const weeklyValues = days.map((d, i) => data.weekly[String(i)] || data.weekly[i] || 0);
+        const maxWeekly = Math.max(...weeklyValues);
 
         weeklyChart = new Chart(ctxWeekly, {
             type: 'bar',
@@ -754,35 +932,97 @@
                 datasets: [{
                     label: '예약 건수',
                     data: weeklyValues,
-                    backgroundColor: 'rgba(25, 135, 84, 0.6)',
-                    borderColor: 'rgba(25, 135, 84, 1)',
-                    borderWidth: 1
+                    backgroundColor: gradientWeekly,
+                    borderRadius: 10, // More rounded
+                    barPercentage: 0.6,
                 }]
             },
-            options: { scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } } } }
+            options: {
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        suggestedMax: maxWeekly + 5, // Add padding for labels
+                        grid: { borderDash: [2, 4] },
+                        ticks: { stepSize: 1 }
+                    },
+                    x: { grid: { display: false } }
+                },
+                plugins: {
+                    datalabels: {
+                        anchor: 'end',
+                        align: 'top',
+                        color: '#555',
+                        font: { weight: 'bold' },
+                        formatter: (value) => value > 0 ? value : ''
+                    },
+                    legend: { display: false }
+                },
+                animation: {
+                    duration: 2000,
+                    easing: 'easeOutQuart',
+                    delay: (context) => {
+                        if (context.type === 'data' && context.mode === 'default') {
+                            return context.dataIndex * 200; // Slower wave
+                        }
+                        return 0;
+                    }
+                }
+            }
         });
 
-        // 3. Hourly Line
+        // --- 3. Hourly Line (Smooth + Filled Gradient) ---
         const ctxHourly = document.getElementById('hourlyChart').getContext('2d');
+        const gradientHourly = ctxHourly.createLinearGradient(0, 0, 0, 400);
+        gradientHourly.addColorStop(0, 'rgba(78, 115, 223, 0.5)');
+        gradientHourly.addColorStop(1, 'rgba(78, 115, 223, 0.05)');
+
         const hours = Array.from({ length: 14 }, (_, i) => i + 9);
         const hourlyValues = hours.map(h => data.hourly[String(h)] || data.hourly[h] || 0);
+        const maxHourly = Math.max(...hourlyValues);
 
         hourlyChart = new Chart(ctxHourly, {
             type: 'line',
             data: {
                 labels: hours.map(h => `${h}시`),
                 datasets: [{
-                    label: '시간대별 이용 빈도',
+                    label: '이용',
                     data: hourlyValues,
                     fill: true,
-                    backgroundColor: 'rgba(255, 193, 7, 0.2)',
-                    borderColor: 'rgba(255, 193, 7, 1)',
-                    tension: 0.4
+                    backgroundColor: gradientHourly,
+                    borderColor: '#4e73df',
+                    pointBackgroundColor: '#fff',
+                    pointBorderColor: '#4e73df',
+                    pointRadius: 5,
+                    pointHoverRadius: 7,
+                    tension: 0.4 // Smooth bezier
                 }]
             },
             options: {
-                scales: { y: { beginAtZero: true } },
-                plugins: { legend: { display: false } }
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        suggestedMax: maxHourly + 5, // Padding for labels
+                        grid: { borderDash: [2, 4] },
+                        ticks: { stepSize: 1 }
+                    },
+                    x: { grid: { display: false } }
+                },
+                plugins: {
+                    legend: { display: false },
+                    datalabels: {
+                        align: 'top',
+                        color: '#4e73df',
+                        backgroundColor: '#fff',
+                        borderRadius: 4,
+                        font: { weight: 'bold' },
+                        formatter: (value) => value > 0 ? value : ''
+                    }
+                },
+                animation: {
+                    duration: 2000,
+                    easing: 'easeInOutQuart'
+                }
             }
         });
     }
@@ -800,38 +1040,7 @@
             });
     }
 
-    function saveAllSettings() {
-        const payload = {
-            notice_text: document.getElementById('setNotice').value,
-            wifi_info: document.getElementById('setWifi').value,
-            door_pw: document.getElementById('setDoor').value,
-            telegram_token: document.getElementById('telegramToken') ? document.getElementById('telegramToken').value : '',
-            telegram_chat_id: document.getElementById('telegramChatId') ? document.getElementById('telegramChatId').value : '',
-
-            // Email Settings
-            smtp_host: document.getElementById('smtpHost') ? document.getElementById('smtpHost').value : '',
-            smtp_port: document.getElementById('smtpPort') ? document.getElementById('smtpPort').value : '',
-            smtp_email: document.getElementById('smtpEmail') ? document.getElementById('smtpEmail').value : '',
-            smtp_password: document.getElementById('smtpPassword') ? document.getElementById('smtpPassword').value : '',
-            official_email: document.getElementById('officialEmail') ? document.getElementById('officialEmail').value : ''
-        };
-
-        fetch('/admin/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        })
-            .then(res => res.json())
-            .then(data => {
-                if (data.success) showAlert('설정이 저장되었습니다.');
-            });
-    }
-
-    document.getElementById('btnSaveSettings').addEventListener('click', saveAllSettings);
-
-    // Email Listeners
-    const btnSaveEmail = document.getElementById('btnSaveEmail');
-    if (btnSaveEmail) btnSaveEmail.addEventListener('click', saveAllSettings);
+    // Old saveAllSettings removed (replaced by saveGenericSettings)
 
     function setPreset(type) {
         if (type === 'naver') {
@@ -845,7 +1054,13 @@
 
     // Telegram Listeners
     const btnSaveTelegram = document.getElementById('btnSaveTelegram');
-    if (btnSaveTelegram) btnSaveTelegram.addEventListener('click', saveAllSettings);
+    if (btnSaveTelegram) btnSaveTelegram.addEventListener('click', function () {
+        const settings = {
+            'telegram_token': document.getElementById('telegramToken').value,
+            'telegram_chat_id': document.getElementById('telegramChatId').value
+        };
+        saveGenericSettings(settings, '텔레그램 설정이 저장되었습니다.');
+    });
 
     const btnTestTelegram = document.getElementById('btnTestTelegram');
     if (btnTestTelegram) {
@@ -901,18 +1116,11 @@
                         showAlert('차단이 해제되었습니다.', function () {
                             location.reload();
                         });
+                    } else {
+                        showAlert('해제 실패: ' + (data.error || 'Unknown'));
                     }
                 });
         });
-    }
-    if (data.success) {
-        showAlert('차단이 해제되었습니다.', function () {
-            location.reload();
-        });
-    } else {
-        showAlert('해제 실패: ' + (data.error || 'Unknown'));
-    }
-            });
     }
 
     document.getElementById('btnChangePw').addEventListener('click', function () {
@@ -1151,8 +1359,280 @@
             .catch(err => showAlert('서버 통신 오류'));
     }
 
-    // --- Data Filtering Logic ---
+    // --- Generic Settings Save ---
+    function saveGenericSettings(settingsObj, successMsg) {
+        fetch('/api/admin/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ settings: settingsObj })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert(successMsg);
+                } else {
+                    showAlert('저장 실패: ' + data.error);
+                }
+            })
+            .catch(err => showAlert('서버 통신 오류'));
+    }
+
+    // --- DOM Loaded Logic ---
     document.addEventListener('DOMContentLoaded', function () {
+        // Email Settings Save
+        const btnSaveEmail = document.getElementById('btnSaveEmail');
+        if (btnSaveEmail) {
+            btnSaveEmail.addEventListener('click', function () {
+                const settings = {
+                    'smtp_email': document.getElementById('smtpEmail').value,
+                    'smtp_password': document.getElementById('smtpPassword').value,
+                    'smtp_host': document.getElementById('smtpHost').value,
+                    'smtp_port': document.getElementById('smtpPort').value,
+                    'official_email': document.getElementById('officialEmail').value
+                };
+                saveGenericSettings(settings, '이메일 설정이 저장되었습니다.');
+            });
+        }
+
+        // Main Settings Save
+        const btnSaveSettings = document.getElementById('btnSaveSettings');
+        if (btnSaveSettings) {
+            btnSaveSettings.addEventListener('click', function () {
+                const settings = {
+                    'notice_text': document.getElementById('setNotice').value,
+                    'wifi_info': document.getElementById('setWifi').value,
+                    'door_pw': document.getElementById('setDoor').value
+                };
+                saveGenericSettings(settings, '설정이 저장되었습니다.');
+            });
+        }
+
+        // Initialize Summernote
+        $('#privacyPolicy').summernote({
+            placeholder: '약관 내용을 입력하세요.',
+            tabsize: 2,
+            height: 400,
+            toolbar: [
+                ['style', ['style']],
+                ['font', ['bold', 'underline', 'clear']],
+                ['color', ['color']],
+                ['para', ['ul', 'ol', 'paragraph']],
+                ['table', ['table']],
+                ['insert', ['link', 'picture']], // Video removed as requested
+                ['view', ['help']] // Fullscreen and Codeview removed as requested
+            ],
+            lang: 'ko-KR' // default en-US, can be changed if locale file is included
+        });
+
+        // Terms Save
+        const btnSaveTerms = document.getElementById('btnSaveTerms');
+        if (btnSaveTerms) {
+            btnSaveTerms.addEventListener('click', function () {
+                const settings = {
+                    'privacy_policy': $('#privacyPolicy').val() // Get HTML code
+                };
+                saveGenericSettings(settings, '약관이 저장되었습니다.');
+            });
+        }
+
+        // Default Terms Template
+        const btnLoadTemplate = document.getElementById('btnLoadTemplate');
+        if (btnLoadTemplate) {
+            btnLoadTemplate.addEventListener('click', function () {
+                showConfirm('작성 중인 내용이 사라집니다. 기본 양식을 불러오시겠습니까?', function () {
+                    const defaultTerms = `<div class="lh-sm">
+    <h5 class="fw-bold text-center mb-4">[이용 약관 및 개인정보 처리방침]</h5>
+
+    <h6 class="fw-bold text-primary"><i class="fas fa-book-reader me-2"></i>제1조 (시설 이용 수칙)</h6>
+    <ol class="small text-muted mb-4">
+        <li><strong>이용 시간 준수:</strong> 예약 시간 내에 입실 및 퇴실(정리 포함)을 완료해야 합니다.</li>
+        <li><strong>정리 정돈:</strong> 퇴실 시 사용한 물품(책상, 의자, 전자기기 등)을 제자리에 정리합니다.</li>
+        <li><strong>입실 체크:</strong> 시설 이용 시 반드시 QR 체크인 또는 스마트 체크인을 진행해야 합니다.</li>
+        <li><strong>책임:</strong> 시설물 파손, 분실, 훼손 시 원상복구 또는 배상의 책임이 있습니다.</li>
+    </ol>
+
+    <h6 class="fw-bold text-danger"><i class="fas fa-exclamation-circle me-2"></i>제2조 (예약 취소 및 노쇼 정책)</h6>
+    <ul class="small text-muted mb-4">
+        <li>당일 취소 또는 예고 없는 미방문(No-Show) 발생 시, <strong>향후 30일간 예약이 제한</strong>될 수 있습니다.</li>
+    </ul>
+
+    <hr class="my-3">
+
+    <h6 class="fw-bold text-success"><i class="fas fa-user-shield me-2"></i>제3조 (개인정보 수집 및 이용 동의)</h6>
+    
+    <p class="small fw-bold mt-2">1. 개인정보의 수집 및 이용 목적</p>
+    <p class="small text-muted">지혜마루 작은도서관은 시설 예약 및 출입 관리를 위해 아래와 같은 개인정보를 수집합니다.</p>
+    
+    <p class="small fw-bold mt-3">2. 수집하는 개인정보의 항목</p>
+    <ul class="small text-muted">
+        <li>필수항목: 이름, 전화번호, 비밀번호(암호화)</li>
+        <li>기타: 예약목적, 전자서명, 출입로그</li>
+    </ul>
+
+    <p class="small fw-bold mt-3">3. 개인정보의 보유 및 이용 기간 (개정 2026.01.13)</p>
+    <p class="small text-muted mb-1">
+        이용자의 개인정보는 원칙적으로 개인정보의 수집 및 이용목적이 달성되면 지체 없이 파기합니다. 단, 다음의 정보는 내부 방침에 따라 명시된 기간 동안 보존합니다.
+    </p>
+    <ul class="small text-muted bg-light p-2 rounded">
+        <li><strong>보존 항목:</strong> 예약 이력 (통계 및 이용 분석용)</li>
+        <li><strong>보존 기간:</strong> 1년 (365일)</li>
+        <li><strong>파기 방법:</strong> 1년 경과 시 이름, 전화번호, 전자서명 등 <u>개인 식별 정보는 복구 불가능한 방법으로 영구 삭제(익명화)</u> 처리되며, 비식별화된 통계 데이터만 남습니다.</li>
+    </ul>
+
+    <p class="small fw-bold mt-3">4. 동의 거부 권리</p>
+    <p class="small text-muted">귀하는 개인정보 수집 및 이용에 동의하지 않을 권리가 있습니다. 단, 동의를 거부할 경우 시설 예약 및 이용이 제한될 수 있습니다.</p>
+</div>`;
+
+                    $('#privacyPolicy').summernote('code', defaultTerms);
+                });
+            });
+        }
+
+        // Import TXT
+        const btnImportTxt = document.getElementById('btnImportTxt');
+        const txtFileInput = document.getElementById('txtFileInput');
+        if (btnImportTxt && txtFileInput) {
+            btnImportTxt.addEventListener('click', () => txtFileInput.click());
+            txtFileInput.addEventListener('change', function (e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const text = e.target.result;
+                    // Convert newlines to HTML breaks for display in WYSIWYG
+                    const htmlContent = text.replace(/\n/g, '<br>');
+                    $('#privacyPolicy').summernote('code', htmlContent);
+                    showAlert('TXT 파일을 불러왔습니다.');
+                    txtFileInput.value = ''; // Reset
+                };
+                reader.readAsText(file, 'UTF-8'); // Assume UTF-8
+            });
+        }
+
+        // Export TXT
+        const btnExportTxt = document.getElementById('btnExportTxt');
+        if (btnExportTxt) {
+            btnExportTxt.addEventListener('click', function () {
+                // Get HTML content
+                let htmlContent = $('#privacyPolicy').summernote('code');
+
+                // Convert HTML to simple text (basic stripping)
+                // 1. Replace <br> and </p> with newlines
+                let textContent = htmlContent
+                    .replace(/<br\s*\/?>/gi, '\n')
+                    .replace(/<\/p>/gi, '\n')
+                    .replace(/<\/div>/gi, '\n')
+                    .replace(/<\/li>/gi, '\n');
+
+                // 2. Strip remaining tags
+                let tmp = document.createElement("DIV");
+                tmp.innerHTML = textContent;
+                let plainText = tmp.textContent || tmp.innerText || "";
+
+                // 3. Clean up multiple newlines
+                plainText = plainText.replace(/\n\s*\n/g, '\n\n').trim();
+
+                // Create blob and download link
+                const blob = new Blob([plainText], { type: 'text/plain;charset=utf-8' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+
+                // Filename: 지혜마루약관_YYYYMMDD.txt
+                const date = new Date();
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                a.download = `지혜마루약관_${year}${month}${day}.txt`;
+
+                document.body.appendChild(a);
+                a.click();
+
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            });
+        }
+
+        // Import HTML
+        const btnImportHtml = document.getElementById('btnImportHtml');
+        const htmlFileInput = document.getElementById('htmlFileInput');
+        if (btnImportHtml && htmlFileInput) {
+            btnImportHtml.addEventListener('click', () => htmlFileInput.click());
+            htmlFileInput.addEventListener('change', function (e) {
+                const file = e.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const htmlContent = e.target.result;
+                    // Directly load HTML into Summernote
+                    $('#privacyPolicy').summernote('code', htmlContent);
+                    showAlert('HTML 파일을 불러왔습니다.');
+                    htmlFileInput.value = '';
+                };
+                reader.readAsText(file, 'UTF-8');
+            });
+        }
+
+        // Export HTML
+        const btnExportHtml = document.getElementById('btnExportHtml');
+        if (btnExportHtml) {
+            btnExportHtml.addEventListener('click', function () {
+                // Get full HTML content
+                let htmlContent = $('#privacyPolicy').summernote('code');
+
+                // Create blob and download link
+                const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.style.display = 'none';
+                a.href = url;
+
+                // Filename: 지혜마루약관_YYYYMMDD.html
+                const date = new Date();
+                const year = date.getFullYear();
+                const month = String(date.getMonth() + 1).padStart(2, '0');
+                const day = String(date.getDate()).padStart(2, '0');
+                a.download = `지혜마루약관_${year}${month}${day}.html`;
+
+                document.body.appendChild(a);
+                a.click();
+
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+            });
+        }
+
+        if (btnSaveNotification) {
+            btnSaveNotification.addEventListener('click', function () {
+                const telegramToken = document.getElementById('telegramToken').value;
+                const telegramChatId = document.getElementById('telegramChatId').value;
+                const doorQrToken = document.getElementById('doorQrToken').value;
+
+                fetch('/api/admin/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        settings: {
+                            telegram_token: telegramToken,
+                            telegram_chat_id: telegramChatId,
+                            door_qr_token: doorQrToken
+                        }
+                    })
+                })
+                    .then(res => res.json())
+                    .then(data => {
+                        if (data.success) {
+                            showConfirm("설정이 저장되었습니다.");
+                        } else {
+                            alert("저장 실패");
+                        }
+                    });
+            });
+        }
+
         // 1. Init Flatpickr (Range Mode)
         const fp = flatpickr("#filterDate", {
             mode: "range",
@@ -1171,8 +1651,7 @@
         rows.forEach(row => {
             const name = row.dataset.name;
             const phone = row.dataset.phone;
-            if (name) uniqueValues.add(name);
-            if (phone) uniqueValues.add(phone);
+            if (name && phone) uniqueValues.add(`${name} (${phone})`);
         });
 
         uniqueValues.forEach(val => {
@@ -1183,11 +1662,14 @@
 
         // 3. Filter Implementation
         const searchInput = document.getElementById('filterSearch');
+        const statusSelect = document.getElementById('filterStatus');
 
         searchInput.addEventListener('input', applyFilters);
+        statusSelect.addEventListener('change', applyFilters);
 
         function applyFilters() {
-            const search = searchInput.value.toLowerCase().trim();
+            const search = searchInput.value.toLowerCase().replace(/[()]/g, '').trim();
+            const status = statusSelect.value;
 
             // Get Dates
             let start = null;
@@ -1202,6 +1684,7 @@
             rows.forEach(row => {
                 const rowDate = row.dataset.date; // YYYY-MM-DD
                 const rowSearch = row.dataset.search.toLowerCase();
+                const rowStatus = row.dataset.status;
 
                 // Date Check
                 let showDate = true;
@@ -1213,7 +1696,11 @@
                 let showText = true;
                 if (search && !rowSearch.includes(search)) showText = false;
 
-                if (showDate && showText) {
+                // Status Check
+                let showStatus = true;
+                if (status && rowStatus !== status) showStatus = false;
+
+                if (showDate && showText && showStatus) {
                     row.style.display = '';
                 } else {
                     row.style.display = 'none';
@@ -1224,12 +1711,14 @@
         window.resetFilters = function () {
             fp.clear();
             searchInput.value = '';
+            statusSelect.value = '';
             applyFilters();
         }
-    });
-    searchInput.value = '';
-    applyFilters();
-    }
+        // Initialize
+        if (searchInput) {
+            searchInput.value = '';
+            applyFilters();
+        }
     });
 </script>
 {% endblock %}
