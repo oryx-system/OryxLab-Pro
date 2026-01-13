@@ -228,8 +228,9 @@
         const currentPw = document.getElementById('myPassword').value;
         if (currentPw) localStorage.setItem('userPassword', currentPw);
 
-        // Show instruction to use native camera
-        alert('📱 QR 체크인 방법\n\n1. 스마트폰 기본 카메라 앱을 열어주세요.\n2. 출입문에 부착된 QR 포스터를 스캔하세요.\n3. 자동으로 체크인 페이지가 열립니다.\n4. "입실 확인" 버튼을 누르면 완료!');
+        // Show QR Guide Modal (defined in base.html)
+        const qrModal = new bootstrap.Modal(document.getElementById('qrCheckinGuideModal'));
+        qrModal.show();
     });
 
     // Checkout Logic

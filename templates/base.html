@@ -38,7 +38,8 @@
                 <ul class="navbar-nav ms-auto align-items-center">
                     <li class="nav-item"><a class="nav-link fw-medium" href="/">홈</a></li>
                     <li class="nav-item"><a class="nav-link fw-medium" href="/my">내 예약</a></li>
-                    <li class="nav-item"><a class="nav-link fw-medium" href="/checkin">QR체크인</a></li>
+                    <li class="nav-item"><a class="nav-link fw-medium" href="#" data-bs-toggle="modal"
+                            data-bs-target="#qrCheckinGuideModal">QR체크인</a></li>
                     <li class="nav-item"><a class="nav-link fw-medium text-danger" href="/admin">관리자</a></li>
                 </ul>
             </div>
@@ -110,6 +111,55 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- QR Checkin Guide Modal -->
+    <div class="modal fade" id="qrCheckinGuideModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-primary text-white border-0">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-qrcode me-2"></i>QR 체크인 안내</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-4">
+                    <div class="d-flex align-items-start mb-3">
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3"
+                            style="width: 32px; height: 32px; min-width: 32px;">1</div>
+                        <div>
+                            <strong>카메라 앱 열기</strong>
+                            <p class="text-muted small mb-0">스마트폰의 기본 카메라 앱을 실행하세요.</p>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-start mb-3">
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3"
+                            style="width: 32px; height: 32px; min-width: 32px;">2</div>
+                        <div>
+                            <strong>QR 포스터 스캔</strong>
+                            <p class="text-muted small mb-0">출입문에 부착된 QR 포스터를 비춰주세요.</p>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-start mb-3">
+                        <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-3"
+                            style="width: 32px; height: 32px; min-width: 32px;">3</div>
+                        <div>
+                            <strong>자동 페이지 이동</strong>
+                            <p class="text-muted small mb-0">체크인 페이지가 자동으로 열립니다.</p>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-start">
+                        <div class="bg-success text-white rounded-circle d-flex align-items-center justify-content-center me-3"
+                            style="width: 32px; height: 32px; min-width: 32px;"><i class="fas fa-check"></i></div>
+                        <div>
+                            <strong class="text-success">"입실 확인" 버튼 터치</strong>
+                            <p class="text-muted small mb-0">전화번호/비밀번호 확인 후 완료!</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-primary rounded-pill px-4" data-bs-dismiss="modal">확인</button>
                 </div>
             </div>
         </div>
