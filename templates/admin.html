@@ -1381,6 +1381,107 @@
 
     // --- DOM Loaded Logic ---
     document.addEventListener('DOMContentLoaded', function () {
+        // [CRITICAL] Initialize Search & Filter FIRST (Robustness)
+        const searchInput = document.getElementById('filterSearch');
+        const statusSelect = document.getElementById('filterStatus');
+        const rows = document.querySelectorAll('.reservation-row');
+
+        // 1. Init Flatpickr (Range Mode) - Wrapped in try-catch for CDN failure resilience
+        let fp = null;
+        try {
+            if (typeof flatpickr !== 'undefined') {
+                fp = flatpickr("#filterDate", {
+                    mode: "range",
+                    locale: "ko",
+                    dateFormat: "Y-m-d",
+                    onChange: function (selectedDates, dateStr) {
+                        applyFilters();
+                    }
+                });
+            } else {
+                console.warn("Flatpickr CDN not loaded - date filter disabled");
+            }
+        } catch (e) {
+            console.error("Flatpickr init failed:", e);
+        }
+
+        // 2. Filter Function
+        function applyFilters() {
+            const search = searchInput ? searchInput.value.toLowerCase().replace(/[()]/g, '').trim() : '';
+            const status = statusSelect ? statusSelect.value : '';
+
+            // Get Dates (only if Flatpickr loaded successfully)
+            let start = null;
+            let end = null;
+            if (fp && fp.selectedDates && fp.selectedDates.length > 0) {
+                start = fp.formatDate(fp.selectedDates[0], "Y-m-d");
+                end = fp.selectedDates.length > 1
+                    ? fp.formatDate(fp.selectedDates[1], "Y-m-d")
+                    : start;
+            }
+
+            rows.forEach(row => {
+                const rowDate = row.dataset.date || '';
+                const rowSearch = (row.dataset.search || '').toLowerCase();
+                const rowStatus = row.dataset.status || '';
+
+                // Date Check
+                let showDate = true;
+                if (start && end && rowDate) {
+                    if (rowDate < start || rowDate > end) showDate = false;
+                }
+
+                // Text Check
+                let showText = true;
+                if (search && !rowSearch.includes(search)) showText = false;
+
+                // Status Check
+                let showStatus = true;
+                if (status && rowStatus !== status) showStatus = false;
+
+                row.style.display = (showDate && showText && showStatus) ? '' : 'none';
+            });
+        }
+
+        // 3. Attach Listeners
+        if (searchInput) {
+            searchInput.addEventListener('input', applyFilters);
+            // Populate Autocomplete
+            const datalist = document.getElementById('reservationOptions');
+            if (datalist) {
+                const uniqueValues = new Set();
+                rows.forEach(row => {
+                    const name = row.dataset.name;
+                    const phone = row.dataset.phone;
+                    if (name && phone) uniqueValues.add(`${name} (${phone})`);
+                });
+                uniqueValues.forEach(val => {
+                    const option = document.createElement('option');
+                    option.value = val;
+                    datalist.appendChild(option);
+                });
+            }
+        }
+        if (statusSelect) {
+            statusSelect.addEventListener('change', applyFilters);
+        }
+
+        // Expose reset to window
+        window.resetFilters = function () {
+            if (fp) fp.clear();
+            if (searchInput) searchInput.value = '';
+            if (statusSelect) statusSelect.value = '';
+            applyFilters();
+        }
+
+        // Initial Filter Apply
+        if (searchInput) {
+            // searchInput.value = ''; // Don't clear on reload, maybe user wants to keep it? actually reset is better for UX
+            applyFilters();
+        }
+
+        // --- End of Search Logic ---
+
         // Email Settings Save
         const btnSaveEmail = document.getElementById('btnSaveEmail');
         if (btnSaveEmail) {
@@ -1409,330 +1510,29 @@
             });
         }
 
-        // Initialize Summernote
-        $('#privacyPolicy').summernote({
-            placeholder: '약관 내용을 입력하세요.',
-            tabsize: 2,
-            height: 400,
-            toolbar: [
-                ['style', ['style']],
-                ['font', ['bold', 'underline', 'clear']],
-                ['color', ['color']],
-                ['para', ['ul', 'ol', 'paragraph']],
-                ['table', ['table']],
-                ['insert', ['link', 'picture']], // Video removed as requested
-                ['view', ['help']] // Fullscreen and Codeview removed as requested
-            ],
-            lang: 'ko-KR' // default en-US, can be changed if locale file is included
-        });
-
-        // Terms Save
-        const btnSaveTerms = document.getElementById('btnSaveTerms');
-        if (btnSaveTerms) {
-            btnSaveTerms.addEventListener('click', function () {
-                const settings = {
-                    'privacy_policy': $('#privacyPolicy').val() // Get HTML code
-                };
-                saveGenericSettings(settings, '약관이 저장되었습니다.');
-            });
-        }
-
-        // Default Terms Template
-        const btnLoadTemplate = document.getElementById('btnLoadTemplate');
-        if (btnLoadTemplate) {
-            btnLoadTemplate.addEventListener('click', function () {
-                showConfirm('작성 중인 내용이 사라집니다. 기본 양식을 불러오시겠습니까?', function () {
-                    const defaultTerms = `<div class="lh-sm">
-    <h5 class="fw-bold text-center mb-4">[이용 약관 및 개인정보 처리방침]</h5>
-
-    <h6 class="fw-bold text-primary"><i class="fas fa-book-reader me-2"></i>제1조 (시설 이용 수칙)</h6>
-    <ol class="small text-muted mb-4">
-        <li><strong>이용 시간 준수:</strong> 예약 시간 내에 입실 및 퇴실(정리 포함)을 완료해야 합니다.</li>
-        <li><strong>정리 정돈:</strong> 퇴실 시 사용한 물품(책상, 의자, 전자기기 등)을 제자리에 정리합니다.</li>
-        <li><strong>입실 체크:</strong> 시설 이용 시 반드시 QR 체크인 또는 스마트 체크인을 진행해야 합니다.</li>
-        <li><strong>책임:</strong> 시설물 파손, 분실, 훼손 시 원상복구 또는 배상의 책임이 있습니다.</li>
-    </ol>
-
-    <h6 class="fw-bold text-danger"><i class="fas fa-exclamation-circle me-2"></i>제2조 (예약 취소 및 노쇼 정책)</h6>
-    <ul class="small text-muted mb-4">
-        <li>당일 취소 또는 예고 없는 미방문(No-Show) 발생 시, <strong>향후 30일간 예약이 제한</strong>될 수 있습니다.</li>
-    </ul>
-
-    <hr class="my-3">
-
-    <h6 class="fw-bold text-success"><i class="fas fa-user-shield me-2"></i>제3조 (개인정보 수집 및 이용 동의)</h6>
-    
-    <p class="small fw-bold mt-2">1. 개인정보의 수집 및 이용 목적</p>
-    <p class="small text-muted">지혜마루 작은도서관은 시설 예약 및 출입 관리를 위해 아래와 같은 개인정보를 수집합니다.</p>
-    
-    <p class="small fw-bold mt-3">2. 수집하는 개인정보의 항목</p>
-    <ul class="small text-muted">
-        <li>필수항목: 이름, 전화번호, 비밀번호(암호화)</li>
-        <li>기타: 예약목적, 전자서명, 출입로그</li>
-    </ul>
-
-    <p class="small fw-bold mt-3">3. 개인정보의 보유 및 이용 기간 (개정 2026.01.13)</p>
-    <p class="small text-muted mb-1">
-        이용자의 개인정보는 원칙적으로 개인정보의 수집 및 이용목적이 달성되면 지체 없이 파기합니다. 단, 다음의 정보는 내부 방침에 따라 명시된 기간 동안 보존합니다.
-    </p>
-    <ul class="small text-muted bg-light p-2 rounded">
-        <li><strong>보존 항목:</strong> 예약 이력 (통계 및 이용 분석용)</li>
-        <li><strong>보존 기간:</strong> 1년 (365일)</li>
-        <li><strong>파기 방법:</strong> 1년 경과 시 이름, 전화번호, 전자서명 등 <u>개인 식별 정보는 복구 불가능한 방법으로 영구 삭제(익명화)</u> 처리되며, 비식별화된 통계 데이터만 남습니다.</li>
-    </ul>
-
-    <p class="small fw-bold mt-3">4. 동의 거부 권리</p>
-    <p class="small text-muted">귀하는 개인정보 수집 및 이용에 동의하지 않을 권리가 있습니다. 단, 동의를 거부할 경우 시설 예약 및 이용이 제한될 수 있습니다.</p>
-</div>`;
-
-                    $('#privacyPolicy').summernote('code', defaultTerms);
-                });
-            });
-        }
-
-        // Import TXT
-        const btnImportTxt = document.getElementById('btnImportTxt');
-        const txtFileInput = document.getElementById('txtFileInput');
-        if (btnImportTxt && txtFileInput) {
-            btnImportTxt.addEventListener('click', () => txtFileInput.click());
-            txtFileInput.addEventListener('change', function (e) {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                const reader = new FileReader();
-                reader.onload = function (e) {
-                    const text = e.target.result;
-                    // Convert newlines to HTML breaks for display in WYSIWYG
-                    const htmlContent = text.replace(/\n/g, '<br>');
-                    $('#privacyPolicy').summernote('code', htmlContent);
-                    showAlert('TXT 파일을 불러왔습니다.');
-                    txtFileInput.value = ''; // Reset
-                };
-                reader.readAsText(file, 'UTF-8'); // Assume UTF-8
-            });
-        }
-
-        // Export TXT
-        const btnExportTxt = document.getElementById('btnExportTxt');
-        if (btnExportTxt) {
-            btnExportTxt.addEventListener('click', function () {
-                // Get HTML content
-                let htmlContent = $('#privacyPolicy').summernote('code');
-
-                // Convert HTML to simple text (basic stripping)
-                // 1. Replace <br> and </p> with newlines
-                let textContent = htmlContent
-                    .replace(/<br\s*\/?>/gi, '\n')
-                    .replace(/<\/p>/gi, '\n')
-                    .replace(/<\/div>/gi, '\n')
-                    .replace(/<\/li>/gi, '\n');
-
-                // 2. Strip remaining tags
-                let tmp = document.createElement("DIV");
-                tmp.innerHTML = textContent;
-                let plainText = tmp.textContent || tmp.innerText || "";
-
-                // 3. Clean up multiple newlines
-                plainText = plainText.replace(/\n\s*\n/g, '\n\n').trim();
-
-                // Create blob and download link
-                const blob = new Blob([plainText], { type: 'text/plain;charset=utf-8' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-
-                // Filename: 지혜마루약관_YYYYMMDD.txt
-                const date = new Date();
-                const year = date.getFullYear();
-                const month = String(date.getMonth() + 1).padStart(2, '0');
-                const day = String(date.getDate()).padStart(2, '0');
-                a.download = `지혜마루약관_${year}${month}${day}.txt`;
-
-                document.body.appendChild(a);
-                a.click();
-
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-            });
-        }
-
-        // Import HTML
-        const btnImportHtml = document.getElementById('btnImportHtml');
-        const htmlFileInput = document.getElementById('htmlFileInput');
-        if (btnImportHtml && htmlFileInput) {
-            btnImportHtml.addEventListener('click', () => htmlFileInput.click());
-            htmlFileInput.addEventListener('change', function (e) {
-                const file = e.target.files[0];
-                if (!file) return;
-
-                const reader = new FileReader();
-                reader.onload = function (e) {
-                    const htmlContent = e.target.result;
-                    // Directly load HTML into Summernote
-                    $('#privacyPolicy').summernote('code', htmlContent);
-                    showAlert('HTML 파일을 불러왔습니다.');
-                    htmlFileInput.value = '';
-                };
-                reader.readAsText(file, 'UTF-8');
-            });
-        }
-
-        // Export HTML
-        const btnExportHtml = document.getElementById('btnExportHtml');
-        if (btnExportHtml) {
-            btnExportHtml.addEventListener('click', function () {
-                // Get full HTML content
-                let htmlContent = $('#privacyPolicy').summernote('code');
-
-                // Create blob and download link
-                const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-                const url = window.URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.style.display = 'none';
-                a.href = url;
-
-                // Filename: 지혜마루약관_YYYYMMDD.html
-                const date = new Date();
-                const year = date.getFullYear();
-                const month = String(date.getMonth() + 1).padStart(2, '0');
-                const day = String(date.getDate()).padStart(2, '0');
-                a.download = `지혜마루약관_${year}${month}${day}.html`;
-
-                document.body.appendChild(a);
-                a.click();
-
-                window.URL.revokeObjectURL(url);
-                document.body.removeChild(a);
-            });
-        }
-
-        if (btnSaveNotification) {
-            btnSaveNotification.addEventListener('click', function () {
-                const telegramToken = document.getElementById('telegramToken').value;
-                const telegramChatId = document.getElementById('telegramChatId').value;
-                const doorQrToken = document.getElementById('doorQrToken').value;
-
-                fetch('/api/admin/settings', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        settings: {
-                            telegram_token: telegramToken,
-                            telegram_chat_id: telegramChatId,
-                            door_qr_token: doorQrToken
-                        }
-                    })
-                })
-                    .then(res => res.json())
-                    .then(data => {
-                        if (data.success) {
-                            showConfirm("설정이 저장되었습니다.");
-                        } else {
-                            alert("저장 실패");
-                        }
-                    });
-            });
-        }
-
-        // 1. Init Flatpickr (Range Mode) - Wrapped in try-catch for CDN failure resilience
-        let fp = null;
+        // Initialize Summernote (Protected)
         try {
-            if (typeof flatpickr !== 'undefined') {
-                fp = flatpickr("#filterDate", {
-                    mode: "range",
-                    locale: "ko",
-                    dateFormat: "Y-m-d",
-                    onChange: function (selectedDates, dateStr) {
-                        applyFilters();
-                    }
+            if (typeof $ !== 'undefined' && $.fn.summernote) {
+                $('#privacyPolicy').summernote({
+                    placeholder: '약관 내용을 입력하세요.',
+                    tabsize: 2,
+                    height: 400,
+                    toolbar: [
+                        ['style', ['style']],
+                        ['font', ['bold', 'underline', 'clear']],
+                        ['color', ['color']],
+                        ['para', ['ul', 'ol', 'paragraph']],
+                        ['table', ['table']],
+                        ['insert', ['link', 'picture']],
+                        ['view', ['help']]
+                    ],
+                    lang: 'ko-KR'
                 });
             } else {
-                console.warn("Flatpickr CDN not loaded - date filter disabled");
+                console.warn("Summernote lib missing or jQuery missing.");
             }
         } catch (e) {
-            console.error("Flatpickr init failed:", e);
-        }
-
-        // 2. Populate Autocomplete
-        const rows = document.querySelectorAll('.reservation-row');
-        const datalist = document.getElementById('reservationOptions');
-        const uniqueValues = new Set();
-
-        rows.forEach(row => {
-            const name = row.dataset.name;
-            const phone = row.dataset.phone;
-            if (name && phone) uniqueValues.add(`${name} (${phone})`);
-        });
-
-        uniqueValues.forEach(val => {
-            const option = document.createElement('option');
-            option.value = val;
-            datalist.appendChild(option);
-        });
-
-        // 3. Filter Implementation
-        const searchInput = document.getElementById('filterSearch');
-        const statusSelect = document.getElementById('filterStatus');
-
-        if (searchInput) {
-            searchInput.addEventListener('input', applyFilters);
-        }
-        if (statusSelect) {
-            statusSelect.addEventListener('change', applyFilters);
-        }
-
-        function applyFilters() {
-            const search = searchInput.value.toLowerCase().replace(/[()]/g, '').trim();
-            const status = statusSelect.value;
-
-            // Get Dates (only if Flatpickr loaded successfully)
-            let start = null;
-            let end = null;
-            if (fp && fp.selectedDates && fp.selectedDates.length > 0) {
-                start = fp.formatDate(fp.selectedDates[0], "Y-m-d");
-                end = fp.selectedDates.length > 1
-                    ? fp.formatDate(fp.selectedDates[1], "Y-m-d")
-                    : start;
-            }
-
-            rows.forEach(row => {
-                const rowDate = row.dataset.date; // YYYY-MM-DD
-                const rowSearch = row.dataset.search.toLowerCase();
-                const rowStatus = row.dataset.status;
-
-                // Date Check
-                let showDate = true;
-                if (start && end) {
-                    if (rowDate < start || rowDate > end) showDate = false;
-                }
-
-                // Text Check
-                let showText = true;
-                if (search && !rowSearch.includes(search)) showText = false;
-
-                // Status Check
-                let showStatus = true;
-                if (status && rowStatus !== status) showStatus = false;
-
-                if (showDate && showText && showStatus) {
-                    row.style.display = '';
-                } else {
-                    row.style.display = 'none';
-                }
-            });
-        }
-
-        window.resetFilters = function () {
-            if (fp) fp.clear();
-            if (searchInput) searchInput.value = '';
-            if (statusSelect) statusSelect.value = '';
-            applyFilters();
-        }
-        // Initialize
-        if (searchInput) {
-            searchInput.value = '';
-            applyFilters();
+            console.error("Summernote init failed:", e);
         }
     });
 </script>
