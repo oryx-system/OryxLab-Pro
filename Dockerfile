@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM python:3.9-slim-bullseye
 
 # Set timezone to KST (Korea Standard Time)
 ENV TZ=Asia/Seoul
