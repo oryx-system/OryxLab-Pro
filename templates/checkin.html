@@ -119,7 +119,65 @@
         }
         if (savedPw && checkinPw) checkinPw.value = savedPw;
 
-        // Step 1: Verify Credentials Local Validation
+        // NEW: Check if door_token is already in URL (from native camera QR scan)
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlToken = urlParams.get('door_token');
+
+        if (urlToken) {
+            // Token already present! Show simplified flow
+            console.log("URL Token detected:", urlToken);
+
+            // Change button text and behavior
+            const btnVerify = document.getElementById('btnVerifyAndScan');
+            if (btnVerify) {
+                btnVerify.innerHTML = '<i class="fas fa-check-circle me-2"></i>입실 확인';
+                btnVerify.addEventListener('click', function () {
+                    const phone = checkinPhone.value;
+                    const pw = checkinPw.value;
+
+                    if (!phone || !pw) return showAlert('전화번호와 비밀번호를 모두 입력해주세요.');
+
+                    // Save credentials if remember checked
+                    if (rememberCheck && rememberCheck.checked) {
+                        localStorage.setItem('userPhone', phone);
+                        localStorage.setItem('userPassword', pw);
+                    }
+
+                    // Direct API call (skip camera entirely!)
+                    this.disabled = true;
+                    this.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>처리 중...';
+
+                    fetch('/api/checkin', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            phone: phone,
+                            password: pw,
+                            qr_token: urlToken
+                        })
+                    })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.success) {
+                                showAlert('✅ 입실이 완료되었습니다!\\n좋은 시간 되세요.');
+                                setTimeout(() => window.location.href = '/my', 1500);
+                            } else {
+                                showAlert(data.error || '입실 처리 실패');
+                                this.disabled = false;
+                                this.innerHTML = '<i class="fas fa-check-circle me-2"></i>입실 확인';
+                            }
+                        })
+                        .catch(err => {
+                            showAlert('오류: ' + err);
+                            this.disabled = false;
+                            this.innerHTML = '<i class="fas fa-check-circle me-2"></i>입실 확인';
+                        });
+                });
+                return; // Skip the normal camera flow setup below
+            }
+        }
+
+        // Step 1: Verify Credentials Local Validation (Original flow for in-app scanning)
         const btnVerify = document.getElementById('btnVerifyAndScan');
         if (btnVerify) {
             btnVerify.addEventListener('click', function () {
