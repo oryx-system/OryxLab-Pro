@@ -1172,8 +1172,14 @@ def send_bulk_report():
         
     # Generate Merged PDF
     font_path = "C:/Windows/Fonts/malgun.ttf"
+    
+    # Check for Linux/Docker Path (NanumGothic)
     if not os.path.exists(font_path):
-         return jsonify({'error': '폰트 없음'}), 500
+        linux_font = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+        if os.path.exists(linux_font):
+            font_path = linux_font
+        else:
+            return jsonify({'error': '폰트 없음'}), 500
          
     try:
         pdfmetrics.registerFont(TTFont('Malgun', font_path))
