@@ -1805,11 +1805,11 @@ def download_qr_poster():
     # --- Main Title ---
     draw.text((width/2, header_height + 140), "입실 체크인", font=title_font, fill="black", anchor="mm")
     
-    # --- QR Code (Balanced Size) ---
-    qr_size = 700
+    # --- QR Code (Maximized Size) ---
+    qr_size = 900
     qr_img = qr_img.resize((qr_size, qr_size))
     qr_x = (width - qr_size) // 2
-    qr_y = header_height + 250
+    qr_y = header_height + 220
     canvas.paste(qr_img, (qr_x, qr_y))
 
     # --- Guide Text ---
