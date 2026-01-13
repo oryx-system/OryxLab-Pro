@@ -6,7 +6,7 @@ services:
     container_name: jihye_library
     restart: unless-stopped
     ports:
-      - "5500:5000"
+      - "5050:5000"
     volumes:
       - ./instance:/app/instance
       - ./static/uploads:/app/static/uploads
