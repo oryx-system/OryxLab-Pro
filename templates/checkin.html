@@ -178,14 +178,17 @@
 
         const config = {
             fps: 10,
-            qrbox: { width: 250, height: 250 },
-            experimentalFeatures: {
-                useBarCodeDetectorIfSupported: true
-            }
+            // qrbox removed to scan entire feed
+            aspectRatio: 1.0
         };
 
-        // Prefer back camera
-        html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
+        const constraints = {
+            facingMode: "environment",
+            focusMode: "continuous"
+        };
+
+        // Prefer back camera with focus
+        html5QrCode.start(constraints, config, onScanSuccess)
             .then(() => {
                 isScanning = true;
                 // Switch UI only on success
