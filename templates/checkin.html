@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block head %}
-<script src="https://unpkg.com/html5-qrcode" type="text/javascript"></script>
+<script src="https://unpkg.com/html5-qrcode@2.3.8" type="text/javascript"></script>
 {% endblock %}
 
 {% block content %}
@@ -178,8 +178,7 @@
 
         const config = {
             fps: 10,
-            // qrbox removed to scan entire feed
-            aspectRatio: 1.0
+            qrbox: { width: 250, height: 250 }
         };
 
         // Simple, robust constraints
