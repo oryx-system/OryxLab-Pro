@@ -763,14 +763,15 @@ def checkin_process():
     # 3. Time Check
     target_res = None
     for r in valid_candidates:
-        # Checkin allowed: [Start - 30min] ~ [End]
-        if (r.start_time - margin) <= now < r.end_time: 
+        # Checkin allowed: [Start - 30min] ~ [Midnight of that day]
+        midnight = r.start_time.replace(hour=23, minute=59, second=59)
+        if (r.start_time - margin) <= now <= midnight: 
              target_res = r
              break
     
     if not target_res:
          # Check if too early or too late
-        return jsonify({'error': '현재 체크인 가능한 시간이 아닙니다.\n(예약 30분 전부터 이용 종료 시간까지 가능)'}), 404
+        return jsonify({'error': '현재 체크인 가능한 시간이 아닙니다.\n(예약 30분 전부터 당일 자정까지 가능)'}), 404
         
     target_res.status = 'checked_in'
     db.session.commit()
