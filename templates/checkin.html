@@ -41,7 +41,7 @@
 
                 <!-- Step 2: Scanner (Hidden initially) -->
                 <div id="scannerStep" style="display: none;">
-                    <div id="reader" width="100%" style="border-radius: 10px; overflow: hidden;"></div>
+                    <div id="reader" style="width: 100%; border-radius: 10px; overflow: hidden;"></div>
                     <p class="mt-2 text-primary fw-bold blink-text" id="scanInstruction">도서관 문 앞의 QR코드를 비춰주세요</p>
 
                     <!-- Manual Fallback (Hidden by default, shown on error) -->
@@ -176,7 +176,13 @@
     function startScanning(btnElement, originalText) {
         if (isScanning) return;
 
-        const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+        const config = {
+            fps: 5,
+            qrbox: { width: 250, height: 250 },
+            experimentalFeatures: {
+                useBarCodeDetectorIfSupported: true
+            }
+        };
 
         // Prefer back camera
         html5QrCode.start({ facingMode: "environment" }, config, onScanSuccess)
