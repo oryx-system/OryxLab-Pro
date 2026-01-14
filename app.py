@@ -1095,7 +1095,7 @@ def admin_preview_pdf(id):
         buffer,
         mimetype='application/pdf',
         as_attachment=False,
-        download_name=f'application_{id}.pdf'
+        download_name=f'{res.name}_{res.start_time.strftime("%Y%m%d")}.pdf'
     )
 
 @app.route('/admin/reservations/<int:id>/send_official', methods=['POST'])
@@ -1274,7 +1274,7 @@ def preview_pdf(id):
         buffer,
         mimetype='application/pdf',
         as_attachment=False, # Preview in browser
-        download_name=f'application_{id}.pdf'
+        download_name=f'{res.name}_{res.start_time.strftime("%Y%m%d")}.pdf'
     )
 
 @app.route('/api/reservations/<int:id>/send_to_admin', methods=['POST'])
@@ -1319,6 +1319,7 @@ def user_send_pdf_to_admin(id):
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/admin/download_excel')
 def download_excel():
     if not session.get('is_admin'):
         return redirect(url_for('login'))
