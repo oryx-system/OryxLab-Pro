@@ -1592,11 +1592,14 @@ def toggle_pause():
         log_admin_action('admin', f'Paused Reservations ({mode}): {reason}')
     else:
         set_setting('reservation_paused', 'false')
-        # Restore original notice if exists
-        # We prefer storing empty string if original was empty
+        # Restore original notice if backup exists
         orig = get_setting('original_notice')
-        if orig is not None:
-             set_setting('notice_text', orig)
+        if orig is not None and orig != '':
+            set_setting('notice_text', orig)
+            set_setting('original_notice', '')  # Clear backup after restore
+        elif get_setting('original_notice') == '':
+            # Original was empty, restore to empty
+            set_setting('notice_text', '')
         
         log_admin_action('admin', 'Resumed Reservations')
         
