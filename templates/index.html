@@ -413,7 +413,13 @@
         // Optional fields auto-load
         document.getElementById('resAddress').value = localStorage.getItem('userAddress') || '';
         document.getElementById('resEmail').value = localStorage.getItem('userEmail') || '';
-        document.getElementById('resBirthDate').value = localStorage.getItem('userBirthDate') || '';
+        // Set default birth date to 1990 so picker starts near reasonable year
+        const savedBirthDate = localStorage.getItem('userBirthDate') || '';
+        if (savedBirthDate) {
+            document.getElementById('resBirthDate').value = savedBirthDate;
+        } else {
+            document.getElementById('resBirthDate').value = '1990-01-01';
+        }
 
 
 
