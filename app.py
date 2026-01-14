@@ -1615,13 +1615,14 @@ def toggle_pause():
         log_admin_action('admin', f'Paused Reservations ({mode}): {reason}')
     else:
         set_setting('reservation_paused', 'false')
-        # Always restore from backup
-        orig = get_setting('original_notice')
-        print(f"DEBUG: Restoring notice. original_notice = '{orig}'")
-        if orig is not None:
-            set_setting('notice_text', orig)
-            print(f"DEBUG: notice_text restored to '{orig}'")
-        set_setting('original_notice', '')  # Clear backup
+        # Only restore if backup actually exists in DB
+        backup_setting = Settings.query.get('original_notice')
+        if backup_setting and backup_setting.value is not None:
+            set_setting('notice_text', backup_setting.value)
+            print(f"DEBUG: notice_text restored to '{backup_setting.value}'")
+            set_setting('original_notice', '')  # Clear backup after restore
+        else:
+            print("DEBUG: No backup found, keeping current notice")
         
         log_admin_action('admin', 'Resumed Reservations')
         
