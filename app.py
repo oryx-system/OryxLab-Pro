@@ -1077,7 +1077,7 @@ def _generate_pdf_buffer(res):
     elements.append(Spacer(1, 8*mm))
     
     elements.append(Paragraph("위와 같이 「금산군 작은도서관 설치 및 운영 조례」 제4조제4항에 따라", style_footer))
-    elements.append(Paragraph("작은도서관의 (   시설 사용   ) 사용을 신청합니다.", style_footer))
+    elements.append(Paragraph("작은도서관의 (   시설   ) 사용을 신청합니다.", style_footer))
     elements.append(Spacer(1, 12*mm))
     elements.append(Paragraph(datetime.now().strftime('%Y 년   %m 월   %d 일'), style_date))
     elements.append(Spacer(1, 10*mm))
