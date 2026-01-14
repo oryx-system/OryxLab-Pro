@@ -954,7 +954,7 @@ def _generate_pdf_buffer(res):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, 
                             leftMargin=20*mm, rightMargin=20*mm, 
-                            topMargin=20*mm, bottomMargin=15*mm)
+                            topMargin=20*mm, bottomMargin=12*mm)
     
     elements = []
     
@@ -987,13 +987,13 @@ def _generate_pdf_buffer(res):
 
     data = [
         [PB("사용 목적 (회의, 행사 등)"), "", P(res.purpose), "", ""],
-        [PB("신청인\n(사용자 또는 단체)"), PB("사용자(단체)명"), P(res.name), PB("전화번호"), P(p_str)],
-        ["", PB("대표자(성명)"), P(res.name), PB("사업자등록번호\n(생년월일)"), P("")],
+        [PB("신청인<br/>(사용자 또는 단체)"), PB("사용자(단체)명"), P(res.name), PB("전화번호"), P(p_str)],
+        ["", PB("대표자(성명)"), P(res.name), PB("사업자등록번호<br/>(생년월일)"), P("")],
         ["", PB("주소"), P(""), "", ""],
         ["", PB("담당자"), P(res.name), PB("E-mail"), P("")],
         [PB("사용시설"), PB("기본시설"), PL("□ 자료실   □ 문화강좌실   □ 조리실"), "", ""],
-        ["", PB("부대시설 및\n설비"), PL("□ 빔프로젝트   □ 스크린"), "", ""],
-        [PB("사용기간"), P(f"{date_str_start}\n{date_str_end}"), "", "", PB("(   일간)\n*횟수 1회")],
+        ["", PB("부대시설 및<br/>설비"), PL("□ 빔프로젝트   □ 스크린"), "", ""],
+        [PB("사용기간"), P(f"{date_str_start}<br/>{date_str_end}"), "", "", PB("(   일간)<br/>*횟수 1회")],
         [PB("이용예정인원"), P("10 명"), "", "", ""],
         [PB("사용료 등"), P("해당없음"), "", "", ""]
     ]
