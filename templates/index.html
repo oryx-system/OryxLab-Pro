@@ -84,73 +84,90 @@
                             placeholder="예: 독서 모임, 코딩 수업, 인문학 강의 등">
                     </div>
 
-                    <!-- New Fields: Applicant Type -->
+                    <!-- Collapsible Optional Fields Section -->
                     <div class="mb-3">
-                        <label class="form-label fw-bold">신청자 유형</label>
-                        <div class="d-flex gap-3">
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="applicantType" id="typePersonal"
-                                    value="개인" checked onchange="toggleOrgName()">
-                                <label class="form-check-label" for="typePersonal">개인</label>
-                            </div>
-                            <div class="form-check">
-                                <input class="form-check-input" type="radio" name="applicantType" id="typeGroup"
-                                    value="단체" onchange="toggleOrgName()">
-                                <label class="form-check-label" for="typeGroup">단체</label>
+                        <a class="text-decoration-none small" data-bs-toggle="collapse" href="#optionalFields"
+                            role="button" aria-expanded="false" aria-controls="optionalFields">
+                            <i class="fas fa-chevron-down me-1"></i>추가 정보 입력 <span class="text-muted">(선택사항)</span>
+                        </a>
+                        <div class="collapse mt-2" id="optionalFields">
+                            <div class="card card-body bg-light border-0 py-3">
+                                <!-- Applicant Type -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold small mb-1">신청자 유형</label>
+                                    <div class="d-flex gap-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="applicantType"
+                                                id="typePersonal" value="개인" checked onchange="toggleOrgName()">
+                                            <label class="form-check-label small" for="typePersonal">개인</label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="applicantType"
+                                                id="typeGroup" value="단체" onchange="toggleOrgName()">
+                                            <label class="form-check-label small" for="typeGroup">단체</label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Org Name (shows when 단체 selected) -->
+                                <div class="mb-3" id="orgNameField" style="display: none;">
+                                    <label class="form-label fw-bold small mb-1">단체명</label>
+                                    <input type="text" class="form-control form-control-sm" id="resOrgName"
+                                        placeholder="예: ○○독서모임">
+                                </div>
+
+                                <!-- Facilities -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold small mb-1">사용시설</label>
+                                    <div>
+                                        <div class="mb-1">
+                                            <span class="small text-muted">기본:</span>
+                                            <label class="small ms-1 me-2"><input type="checkbox" id="facLib"
+                                                    value="자료실" class="me-1">자료실</label>
+                                            <label class="small me-2"><input type="checkbox" id="facCulture"
+                                                    value="문화강좌실" class="me-1">문화강좌실</label>
+                                            <label class="small"><input type="checkbox" id="facCook" value="조리실"
+                                                    class="me-1">조리실</label>
+                                        </div>
+                                        <div>
+                                            <span class="small text-muted">부대:</span>
+                                            <label class="small ms-1 me-2"><input type="checkbox" id="facBeam"
+                                                    value="빔프로젝트" class="me-1">빔프로젝트</label>
+                                            <label class="small"><input type="checkbox" id="facScreen" value="스크린"
+                                                    class="me-1">스크린</label>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <!-- Expected Count with default value -->
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold small mb-1">이용예정인원</label>
+                                    <input type="number" class="form-control form-control-sm" id="resExpectedCount"
+                                        min="0" max="100" value="0" style="width: 100px;">
+                                </div>
+
+                                <!-- Birth Date & Email Row -->
+                                <div class="row">
+                                    <div class="col-6 mb-2">
+                                        <label class="form-label fw-bold small mb-1">생년월일</label>
+                                        <input type="text" class="form-control form-control-sm" id="resBirthDate"
+                                            placeholder="1990-01-01">
+                                    </div>
+                                    <div class="col-6 mb-2">
+                                        <label class="form-label fw-bold small mb-1">이메일</label>
+                                        <input type="email" class="form-control form-control-sm" id="resEmail"
+                                            placeholder="example@mail.com">
+                                    </div>
+                                </div>
+
+                                <!-- Address -->
+                                <div>
+                                    <label class="form-label fw-bold small mb-1">주소</label>
+                                    <input type="text" class="form-control form-control-sm" id="resAddress"
+                                        placeholder="충남 금산군...">
+                                </div>
                             </div>
                         </div>
-                    </div>
-
-                    <!-- Org Name (shows when 단체 selected) -->
-                    <div class="mb-3" id="orgNameField" style="display: none;">
-                        <label class="form-label fw-bold">단체명</label>
-                        <input type="text" class="form-control" id="resOrgName" placeholder="예: ○○독서모임">
-                    </div>
-
-                    <!-- Facilities -->
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">사용시설 <span class="text-muted small">(선택)</span></label>
-                        <div>
-                            <div class="mb-1">
-                                <span class="small text-muted">기본:</span>
-                                <label class="small ms-1 me-2"><input type="checkbox" id="facLib" value="자료실"
-                                        class="me-1">자료실</label>
-                                <label class="small me-2"><input type="checkbox" id="facCulture" value="문화강좌실"
-                                        class="me-1">문화강좌실</label>
-                                <label class="small"><input type="checkbox" id="facCook" value="조리실"
-                                        class="me-1">조리실</label>
-                            </div>
-                            <div>
-                                <span class="small text-muted">부대:</span>
-                                <label class="small ms-1 me-2"><input type="checkbox" id="facBeam" value="빔프로젝트"
-                                        class="me-1">빔프로젝트</label>
-                                <label class="small"><input type="checkbox" id="facScreen" value="스크린"
-                                        class="me-1">스크린</label>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Expected Count -->
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">이용예정인원 <span class="text-muted small">(선택)</span></label>
-                        <input type="number" class="form-control" id="resExpectedCount" min="1" max="100"
-                            placeholder="예: 10">
-                    </div>
-
-                    <!-- Optional Fields Row -->
-                    <div class="row">
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold">생년월일 <span class="text-muted small">(선택)</span></label>
-                            <input type="text" class="form-control" id="resBirthDate" placeholder="예: 1990-01-01">
-                        </div>
-                        <div class="col-md-6 mb-3">
-                            <label class="form-label fw-bold">이메일 <span class="text-muted small">(선택)</span></label>
-                            <input type="email" class="form-control" id="resEmail" placeholder="예: example@mail.com">
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label fw-bold">주소 <span class="text-muted small">(선택)</span></label>
-                        <input type="text" class="form-control" id="resAddress" placeholder="예: 충남 금산군...">
                     </div>
 
                     <!-- Recurring Reservation -->
@@ -388,11 +405,15 @@
             }
         });
 
-        // Load Remembered Info
+        // Load Remembered Info (including optional fields)
         document.getElementById('rememberMe').checked = true;
         document.getElementById('resName').value = localStorage.getItem('userName') || '';
         document.getElementById('resPhone').value = localStorage.getItem('userPhone') || '';
         document.getElementById('resPassword').value = localStorage.getItem('userPassword') || '';
+        // Optional fields auto-load
+        document.getElementById('resAddress').value = localStorage.getItem('userAddress') || '';
+        document.getElementById('resEmail').value = localStorage.getItem('userEmail') || '';
+        document.getElementById('resBirthDate').value = localStorage.getItem('userBirthDate') || '';
 
 
 
@@ -818,6 +839,10 @@
                         calendar.refetchEvents();
 
                         // Reset Form & Signature
+                        // Save optional info before reset
+                        localStorage.setItem('userAddress', document.getElementById('resAddress').value || '');
+                        localStorage.setItem('userEmail', document.getElementById('resEmail').value || '');
+                        localStorage.setItem('userBirthDate', document.getElementById('resBirthDate').value || '');
                         document.getElementById('reservationForm').reset();
                         finalSignatureData = null;
                         document.getElementById('sigImage').src = "";
