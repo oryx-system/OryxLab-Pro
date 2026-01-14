@@ -962,6 +962,7 @@ def _generate_pdf_buffer(res):
     styles = getSampleStyleSheet()
     style_title = ParagraphStyle('Title', fontName='MalgunBd', fontSize=18, alignment=TA_CENTER)
     style_cell = ParagraphStyle('Cell', fontName='Malgun', fontSize=9, alignment=TA_CENTER, leading=11)
+    style_cell_left = ParagraphStyle('CellLeft', fontName='Malgun', fontSize=9, alignment=TA_LEFT, leading=11)
     style_cell_bold = ParagraphStyle('CellBold', fontName='MalgunBd', fontSize=9, alignment=TA_CENTER, leading=11)
     style_footer = ParagraphStyle('Footer', fontName='Malgun', fontSize=9, alignment=TA_LEFT, leading=14)
     style_date = ParagraphStyle('Date', fontName='Malgun', fontSize=10, alignment=TA_CENTER)
@@ -973,6 +974,7 @@ def _generate_pdf_buffer(res):
     elements.append(Spacer(1, 6*mm))
 
     def P(text): return Paragraph(text, style_cell)
+    def PL(text): return Paragraph(text, style_cell_left)  # Left-aligned
     def PB(text): return Paragraph(text, style_cell_bold)
 
     # Data Preparation
@@ -989,8 +991,8 @@ def _generate_pdf_buffer(res):
         ["", PB("대표자(성명)"), P(res.name), PB("사업자등록번호\n(생년월일)"), P("")],
         ["", PB("주소"), P(""), "", ""],
         ["", PB("담당자"), P(res.name), PB("E-mail"), P("")],
-        [PB("사용시설"), PB("기본시설"), P("□ 자료실   □ 문화강좌실   □ 조리실"), "", ""],
-        ["", PB("부대시설 및\n설비"), P("□ 빔프로젝트   □ 스크린"), "", ""],
+        [PB("사용시설"), PB("기본시설"), PL("□ 자료실   □ 문화강좌실   □ 조리실"), "", ""],
+        ["", PB("부대시설 및\n설비"), PL("□ 빔프로젝트   □ 스크린"), "", ""],
         [PB("사용기간"), P(f"{date_str_start}\n{date_str_end}"), "", "", PB("(   일간)\n*횟수 1회")],
         [PB("이용예정인원"), P("10 명"), "", "", ""],
         [PB("사용료 등"), P("해당없음"), "", "", ""]
