@@ -964,7 +964,7 @@ def _generate_pdf_buffer(res):
     style_cell = ParagraphStyle('Cell', fontName='Malgun', fontSize=9, alignment=TA_CENTER, leading=11)
     style_cell_left = ParagraphStyle('CellLeft', fontName='Malgun', fontSize=9, alignment=TA_LEFT, leading=11)
     style_cell_bold = ParagraphStyle('CellBold', fontName='MalgunBd', fontSize=9, alignment=TA_CENTER, leading=11)
-    style_footer = ParagraphStyle('Footer', fontName='Malgun', fontSize=9, alignment=TA_LEFT, leading=14)
+    style_footer = ParagraphStyle('Footer', fontName='Malgun', fontSize=11, alignment=TA_LEFT, leading=16)
     style_date = ParagraphStyle('Date', fontName='Malgun', fontSize=10, alignment=TA_CENTER)
     style_recipient = ParagraphStyle('Recipient', fontName='MalgunBd', fontSize=14, alignment=TA_CENTER)
 
