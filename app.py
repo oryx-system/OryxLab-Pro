@@ -125,6 +125,7 @@ class Reservation(db.Model):
     checkout_photo = db.Column(db.String(255), nullable=True) # New: Cleaning photo
     # New Fields for Application Form
     applicant_type = db.Column(db.String(10), default='개인')  # 개인/단체
+    org_name = db.Column(db.String(100), nullable=True)  # 단체명 (단체 선택 시)
     facility_basic = db.Column(db.String(100), nullable=True)  # 자료실,문화강좌실,조리실
     facility_extra = db.Column(db.String(100), nullable=True)  # 빔프로젝트,스크린
     expected_count = db.Column(db.Integer, nullable=True)  # 이용예정인원
@@ -605,6 +606,7 @@ def create_reservation():
             signature_blob=sig_blob,
             # New Fields
             applicant_type=data.get('applicant_type', '개인'),
+            org_name=data.get('org_name', ''),
             facility_basic=data.get('facility_basic', ''),
             facility_extra=data.get('facility_extra', ''),
             expected_count=int(data.get('expected_count')) if data.get('expected_count') else None,
@@ -1026,10 +1028,19 @@ def _generate_pdf_buffer(res):
     addr_display = res.address or ""
     email_display = res.email or ""
 
+
+    # Display name based on applicant type
+    if res.applicant_type == '단체' and res.org_name:
+        display_name = res.org_name
+        rep_name = res.name  # 대표자
+    else:
+        display_name = res.name
+        rep_name = res.name
+
     data = [
         [PB("사용 목적 (회의, 행사 등)"), "", P(res.purpose), "", ""],
-        [PB("신청인<br/>(사용자 또는 단체)"), PB("사용자(단체)명"), P(res.name), PB("전화번호"), P(p_str)],
-        ["", PB("대표자(성명)"), P(res.name), PB("사업자등록번호<br/>(생년월일)"), P(birth_display)],
+        [PB("신청인<br/>(사용자 또는 단체)"), PB("사용자(단체)명"), P(display_name), PB("전화번호"), P(p_str)],
+        ["", PB("대표자(성명)"), P(rep_name), PB("사업자등록번호<br/>(생년월일)"), P(birth_display)],
         ["", PB("주소"), P(addr_display), "", ""],
         ["", PB("담당자"), P(res.name), PB("E-mail"), P(email_display)],
         [PB("사용시설"), PB("기본시설"), PL(fb_display), "", ""],
