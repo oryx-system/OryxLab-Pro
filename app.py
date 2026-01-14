@@ -1046,22 +1046,27 @@ def _draw_border(canvas, doc):
     canvas.restoreState()
 
 def _generate_pdf_buffer(res):
-    # 1. Register Font
+    # 1. Register Font - with proper Linux/Docker fallback
     font_path = "C:/Windows/Fonts/malgun.ttf"
+    bold_path = "C:/Windows/Fonts/malgunbd.ttf"
+    
+    # Linux/Docker fallback
     if not os.path.exists(font_path):
         linux_font = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
+        linux_bold = "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf"
         if os.path.exists(linux_font):
             font_path = linux_font
+            bold_path = linux_bold if os.path.exists(linux_bold) else linux_font
         else:
+            print("ERROR: No Korean font found!")
             return None
 
     try:
         pdfmetrics.registerFont(TTFont('Malgun', font_path))
-        bold_path = font_path.replace('.ttf', 'bd.ttf') 
         if os.path.exists(bold_path):
-             pdfmetrics.registerFont(TTFont('MalgunBd', bold_path))
+            pdfmetrics.registerFont(TTFont('MalgunBd', bold_path))
         else:
-             pdfmetrics.registerFont(TTFont('MalgunBd', font_path))
+            pdfmetrics.registerFont(TTFont('MalgunBd', font_path))
     except Exception as e:
         print(f"PDF Font Registration Error: {e}")
         pass
