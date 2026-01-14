@@ -1050,8 +1050,8 @@ def _generate_pdf_buffer(res):
         [PB("사용료 등"), P("해당없음"), "", "", ""]
     ]
     
-    # Row heights - increased to match original proportions
-    row_heights = [18*mm, 16*mm, 16*mm, 16*mm, 16*mm, 16*mm, 16*mm, 22*mm, 16*mm, 16*mm]
+    # Row heights - adjusted to fit on single page
+    row_heights = [12*mm, 11*mm, 11*mm, 11*mm, 11*mm, 11*mm, 11*mm, 16*mm, 11*mm, 11*mm]
     
     t_style = TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'Malgun'),
