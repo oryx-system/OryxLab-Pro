@@ -14,7 +14,11 @@ from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.units import mm
-from reportlab.lib.utils import ImageReader # Added for blob image support
+from reportlab.lib.utils import ImageReader 
+from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as PlatypusImage
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -918,141 +922,179 @@ def backup_db():
 
 
 
-def _draw_application_form(c, res, width, height):
-    # Title
-    c.setFont('Malgun', 24)
-    c.drawCentredString(width/2, height - 30*mm, "지혜마루 작은 도서관")
-    c.setFont('Malgun', 36)
-    c.drawCentredString(width/2, height - 50*mm, "시설 사용 신청서")
-    
-    # Content
-    c.setFont('Malgun', 14)
-    y = height - 80*mm
-    line_height = 12*mm
-    
-    # Box Logic
-    margin_x = 30*mm
-    
-    def draw_row(label, value, y_pos):
-        c.setFont('Malgun', 14)
-        c.drawString(margin_x, y_pos, label)
-        c.drawString(margin_x + 40*mm, y_pos, f":  {value}")
-        c.line(margin_x, y_pos - 2*mm, width - margin_x, y_pos - 2*mm)
-        return y_pos - line_height
-
-    y = draw_row("예약 번호", str(res.id), y)
-    y = draw_row("성       명", res.name, y)
-    
-    # Format Phone Number (010-xxxx-xxxx)
-    p_str = res.phone
-    if len(p_str) == 11 and p_str.startswith('010'):
-         p_str = f"{p_str[:3]}-{p_str[3:7]}-{p_str[7:]}"
-         
-    y = draw_row("전화번호", p_str, y)
-    y = draw_row("사용 일자", res.start_time.strftime('%Y년 %m월 %d일'), y)
-    y = draw_row("사용 시간", f"{res.start_time.strftime('%H:%M')} ~ {res.end_time.strftime('%H:%M')}", y)
-    y = draw_row("사용 목적", res.purpose, y)
-    
-    # Agreement
-    y -= 20*mm
-    c.setFont('Malgun', 12)
-    c.drawString(margin_x, y, "본인은 위와 같이 지혜마루 작은 도서관 시설을 사용하고자 신청하며,")
-    y -= 8*mm
-    c.drawString(margin_x, y, "시설 이용 규정을 준수하고 발생되는 모든 문제에 대해 책임을 질 것을 확약합니다.")
-    
-    # Date & Signature
-    y -= 40*mm
-    c.setFont('Malgun', 14)
-    c.drawCentredString(width/2, y, datetime.now().strftime('%Y년 %m월 %d일'))
-    
-    y -= 20*mm
-    
-    # Text Components
-    name_str = f"신청인 :  {res.name}"
-    seal_str = "(인)"
-    
-    # Calculate widths for centering
-    c.setFont('Malgun', 14)
-    name_w = c.stringWidth(name_str)
-    
-    c.setFont('Malgun', 10) # Smaller as requested
-    seal_w = c.stringWidth(seal_str)
-    
-    spacing = 10*mm # Space between name and (in)
-    total_w = name_w + spacing + seal_w
-    
-    # Starting X to center the whole block
-    start_x = (width - total_w) / 2
-    
-    # 1. Draw Name (Black)
-    c.setFillColorRGB(0, 0, 0)
-    c.setFont('Malgun', 14)
-    c.drawString(start_x, y, name_str)
-    
-    # 2. Draw (in) (Gray)
-    seal_x = start_x + name_w + spacing
-    c.setFillColorRGB(0.7, 0.7, 0.7) # Light Gray
-    c.setFont('Malgun', 10)
-    # Adjust y slightly if needed for baseline alignment, but same y is usually fine for 14 vs 10
-    c.drawString(seal_x, y, seal_str)
-    
-    # Reset color
-    c.setFillColorRGB(0, 0, 0)
-    
-    # 3. Draw Signature Image
-    # Priority: Blob -> Path -> None
-    sig_img_reader = None
-    
-    if res.signature_blob:
-        try:
-            sig_img_reader = ImageReader(io.BytesIO(res.signature_blob))
-        except:
-            pass
-    elif res.signature_path:
-        sig_full_path = os.path.join(instance_path, 'signatures', res.signature_path)
-        if os.path.exists(sig_full_path):
-            sig_img_reader = sig_full_path # Filename is also valid for drawImage
-            
-    if sig_img_reader:
-        # Target Center: Center of "(in)" text
-        center_x = seal_x + (seal_w / 2)
-        center_y = y + 1.5*mm 
-        
-        # Size: ~30.25 x 14.52 (Approx using aspect ratio)
-        sig_w = 30.25 * mm
-        sig_h = 14.52 * mm
-        
-        try:
-            c.drawImage(sig_img_reader, center_x - (sig_w/2), center_y - (sig_h/2), width=sig_w, height=sig_h, mask='auto', preserveAspectRatio=True)
-        except Exception as e:
-            print(f"PDF Signature Draw Error: {e}")
-
 def _generate_pdf_buffer(res):
-    # 1. Register Font (Windows or Linux) with consistent name
+    # 1. Register Font
     font_path = "C:/Windows/Fonts/malgun.ttf"
-    
-    # Check for Linux/Docker Path (NanumGothic)
     if not os.path.exists(font_path):
         linux_font = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
         if os.path.exists(linux_font):
             font_path = linux_font
         else:
-            print("PDF Error: No suitable font found")
-            return None
-         
+            return None # Font error
+
     try:
-        # Register with consistent name 'Malgun' so _draw_application_form works
         pdfmetrics.registerFont(TTFont('Malgun', font_path))
+        # Try registering bold if available, else map to regular
+        bold_path = font_path.replace('.ttf', 'bd.ttf') 
+        if os.path.exists(bold_path):
+             pdfmetrics.registerFont(TTFont('MalgunBd', bold_path))
+        else:
+             pdfmetrics.registerFont(TTFont('MalgunBd', font_path)) # Fallback
     except Exception as e:
         print(f"PDF Font Registration Error: {e}")
         pass
 
-    # 2. Generate PDF
     buffer = io.BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
-    _draw_application_form(c, res, width, height)
-    c.save()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, 
+                            leftMargin=15*mm, rightMargin=15*mm, 
+                            topMargin=20*mm, bottomMargin=20*mm)
+    
+    elements = []
+    
+    # Styles
+    styles = getSampleStyleSheet()
+    style_title = ParagraphStyle('Title', fontName='MalgunBd', fontSize=22, alignment=TA_CENTER)
+    style_cell_center = ParagraphStyle('CellCenter', fontName='Malgun', fontSize=10, alignment=TA_CENTER, leading=14)
+    style_cell_center_bold = ParagraphStyle('CellCenterBold', fontName='MalgunBd', fontSize=10, alignment=TA_CENTER, leading=14)
+    style_footer_text = ParagraphStyle('FooterText', fontName='Malgun', fontSize=11, alignment=TA_LEFT, leading=18)
+    style_footer_date = ParagraphStyle('FooterDate', fontName='Malgun', fontSize=12, alignment=TA_CENTER, spaceBefore=10*mm, spaceAfter=10*mm)
+    style_recipient = ParagraphStyle('Recipient', fontName='MalgunBd', fontSize=20, alignment=TA_CENTER, spaceBefore=20*mm)
+
+    # 1. Title
+    elements.append(Paragraph("군북지혜마루작은도서관 시설 사용 허가 신청서", style_title))
+    elements.append(Spacer(1, 10*mm))
+
+    # Helper Wrappers
+    def P(text): return Paragraph(text, style_cell_center)
+    def PB(text): return Paragraph(text, style_cell_center_bold)
+
+    # Data Preparation
+    # Format Phone
+    p_str = res.phone
+    if len(p_str) == 11 and p_str.startswith('010'):
+         p_str = f"{p_str[:3]}-{p_str[3:7]}-{p_str[7:]}"
+         
+    # Format Date
+    date_str_start = res.start_time.strftime('%Y년 %m월 %d일 %H시 부터')
+    date_str_end = res.end_time.strftime('%Y년 %m월 %d일 %H시 까지')
+    
+    # Grid Data
+    # Col Widths: [30, 30, 45, 30, 45] (Total 180)
+    
+    data = [
+        # Row 0: Purpose
+        [PB("사용 목적 (회의, 행사 등)"), "", P(res.purpose), "", ""],
+        # Row 1: Applicant - Name/Phone
+        [PB("신청인\n(사용자 또는 단체)"), PB("사용자(단체)명"), P(res.name), PB("전화번호"), P(p_str)],
+        # Row 2: Applicant - Rep/RegNum
+        ["", PB("대표자(성명)"), P(res.name), PB("사업자등록번호\n(생년월일)"), P("")], # RegNum Empty
+        # Row 3: Applicant - Addr
+        ["", PB("주소"), P(""), "", ""], # Address Empty
+        # Row 4: Applicant - Manager/Email
+        ["", PB("담당자"), P(res.name), PB("E-mail"), P("")], # Email Empty
+        # Row 5: Facilities - Basic
+        [PB("사용시설"), PB("기본시설"), P("□ 자료실   □ 문화강좌실   □ 조리실"), "", ""],
+        # Row 6: Facilities - Extra
+        ["", PB("부대시설 및\n설비"), P("□ 빔프로젝트   □ 스크린"), "", ""],
+        # Row 7: Period
+        [PB("사용기간"), P(f"{date_str_start}\n{date_str_end}"), "", "", PB("(   일간)\n*횟수  1 회")],
+        # Row 8: Count
+        [PB("이용예정인원"), P("10 명"), "", "", ""], # Fixed 10 or from res? using 10 for now as per mock
+        # Row 9: Fee
+        [PB("사용료 등"), P("해당없음"), "", "", ""]
+    ]
+    
+    # Table Style
+    t_style = TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'Malgun'),
+        ('GRID', (0,0), (-1,-1), 0.5, colors.black),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
+        
+        ('SPAN', (0,0), (1,0)), # Purpose Label
+        ('SPAN', (2,0), (4,0)), # Purpose Value
+        
+        ('SPAN', (0,1), (0,4)), # Applicant Header
+        ('SPAN', (2,3), (4,3)), # Address Value
+        
+        ('SPAN', (0,5), (0,6)), # Facilities Header
+        ('SPAN', (2,5), (4,5)), # Facilities Basic
+        ('SPAN', (2,6), (4,6)), # Facilities Extra
+        
+        ('SPAN', (1,7), (3,7)), # Period Value
+        ('SPAN', (1,8), (4,8)), # Count Value
+        ('SPAN', (1,9), (4,9)), # Fee Value
+        
+        ('MINROWHEIGHT', (0,0), (-1,-1), 12*mm),
+    ])
+    
+    t = Table(data, colWidths=[30*mm, 30*mm, 45*mm, 30*mm, 45*mm])
+    t.setStyle(t_style)
+    elements.append(t)
+    elements.append(Spacer(1, 10*mm))
+    
+    # Footer Text
+    elements.append(Paragraph("위와 같이 「금산군 작은도서관 설치 및 운영 조례」 제4조제4항에 따라", style_footer_text))
+    elements.append(Paragraph("작은도서관의 (      시설 사용      ) 사용을 신청합니다.", style_footer_text))
+    elements.append(Paragraph(datetime.now().strftime('%Y 년   %m 월   %d 일'), style_footer_date))
+    
+    # Signature Section with Image Support
+    sig_content = ""
+    # Check for Signature Image
+    sig_img_flowable = None
+    if res.signature_blob:
+        try:
+            # Platypus Image expects a file-like object or path.
+            # Convert blob to BytesIO
+            img_io = io.BytesIO(res.signature_blob)
+            # Create Platypus Image. Size approx 30mm x 15mm
+            sig_img_flowable = PlatypusImage(img_io, width=30*mm, height=15*mm)
+        except:
+            pass
+    elif res.signature_path:
+        sig_full_path = os.path.join(instance_path, 'signatures', res.signature_path)
+        if os.path.exists(sig_full_path):
+             sig_img_flowable = PlatypusImage(sig_full_path, width=30*mm, height=15*mm)
+             
+    # We use a nested table for the signature part
+    # Structure: [Label, Name, (Signature + Text)]
+    # Or just [Label, Name, SignatureImage] and Text separately?
+    # The form says "(서명 또는 날인)" typically effectively under or next to.
+    
+    # Let's clean this up. we want:
+    # 신청인(단체명)    홍 길 동    (Image) (서명 또는 날인)
+    # But (서명 또는 날인) is text. Image should be strictly ABOVE or ON LEFT of text?
+    # Usually Image is ON TOP of the place where signature goes.
+    
+    # ReportLab Table limits absolute positioning.
+    # We will put the image in a cell content if available.
+    
+    sig_cell = Paragraph("(서명 또는 날인)", style_cell_center)
+    if sig_img_flowable:
+        # Combine Image and Text in a list for the cell? No, Table cell takes list of flowables.
+        sig_cell = [sig_img_flowable, Paragraph("(서명 또는 날인)", style_cell_center)]
+    
+    sig_data = [
+        ["신청인(단체명)", res.name, sig_cell],
+        ["성   명(대표자)", res.name, ""]
+    ]
+    
+    sig_table = Table(sig_data, colWidths=[40*mm, 40*mm, 40*mm])
+    sig_table.setStyle(TableStyle([
+        ('FONTNAME', (0,0), (-1,-1), 'Malgun'),
+        ('ALIGN', (0,0), (0,1), 'LEFT'), 
+        ('ALIGN', (1,0), (1,1), 'CENTER'),
+        ('ALIGN', (2,0), (2,1), 'RIGHT'),
+        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
+        ('SPAN', (2,0), (2,1)) # Signature cell spans 2 rows
+    ]))
+    sig_table.hAlign = 'RIGHT'
+    elements.append(sig_table)
+    elements.append(Spacer(1, 20*mm))
+    
+    elements.append(Paragraph("금산다락원장  귀하", style_recipient))
+
+    doc.build(elements)
     buffer.seek(0)
     return buffer
 
@@ -1832,7 +1874,7 @@ def download_qr_poster():
     qr_img = qr.make_image(fill_color="black", back_color="white").convert('RGBA')
 
     # 3. Create A4 Canvas (High Quality)
-    width, height = 1240, 1754
+    width, height = 1240, 1754  # A4 portrait ratio
     canvas = Image.new('RGB', (width, height), 'white')
     draw = ImageDraw.Draw(canvas)
 
@@ -1867,30 +1909,31 @@ def download_qr_poster():
         token_font = ImageFont.load_default()
         footer_font = ImageFont.load_default()
 
-    # 5. Draw Content
+    # 5. Draw Content (Vertically Centered Layout)
     
-    # --- Header Section (Increased breathing room) ---
+    # --- Header Section ---
     header_height = 180
     draw.rectangle([0, 0, width, header_height], fill="#003366")
     draw.text((width/2, header_height/2), "지혜마루 작은 도서관", font=header_font, fill="white", anchor="mm")
 
-    # --- Main Title ---
-    draw.text((width/2, header_height + 140), "입실 체크인", font=title_font, fill="black", anchor="mm")
+    # --- Main Title (Centered in remaining space) ---
+    content_start = header_height + 180
+    draw.text((width/2, content_start), "입실 체크인", font=title_font, fill="black", anchor="mm")
     
-    # --- QR Code (Balanced Size) ---
-    qr_size = 650
+    # --- QR Code (Centered) ---
+    qr_size = 700  # Slightly larger for A4
     qr_img = qr_img.resize((qr_size, qr_size))
     qr_x = (width - qr_size) // 2
-    qr_y = header_height + 280 # More space for title
+    qr_y = content_start + 120
     canvas.paste(qr_img, (qr_x, qr_y))
 
     # --- Guide Text ---
-    text_y = qr_y + qr_size + 50
+    text_y = qr_y + qr_size + 80
     draw.text((width/2, text_y), "스마트폰 카메라를 켜고", font=desc_font, fill="#555", anchor="mm")
-    draw.text((width/2, text_y + 60), "위 QR 코드를 스캔하세요", font=desc_font, fill="#555", anchor="mm")
+    draw.text((width/2, text_y + 70), "위 QR 코드를 스캔하세요", font=desc_font, fill="#555", anchor="mm")
 
     # --- Footer ---
-    draw.text((width/2, height - 80), "문의: 관리자 호출", font=footer_font, fill="#999", anchor="mm")
+    draw.text((width/2, height - 100), "문의: 관리자 호출", font=footer_font, fill="#999", anchor="mm")
     
     # 6. Save
     output = io.BytesIO()
