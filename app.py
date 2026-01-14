@@ -328,24 +328,28 @@ def login():
         saved_admin_pw = get_setting('admin_pw', 'admin123!')
         saved_dev_pw = get_setting('dev_pw', '123qwe!')
 
-        # Try verifying as hash, if fail, check plain (for legacy/default support before migration)
+        # Try verifying as hash first, then plain text fallback
         is_admin_valid = False
         try:
             is_admin_valid = check_password_hash(saved_admin_pw, password)
         except:
-             is_admin_valid = (saved_admin_pw == password)
+            pass
+        if not is_admin_valid:
+            is_admin_valid = (saved_admin_pw == password)
 
         is_dev_valid = False
         try:
             is_dev_valid = check_password_hash(saved_dev_pw, password)
         except:
+            pass
+        if not is_dev_valid:
             is_dev_valid = (saved_dev_pw == password)
 
         if is_admin_valid:
             session['is_admin'] = True
             log_admin_action('admin', 'Login')
             return redirect(url_for('admin_page'))
-        elif password == saved_dev_pw:
+        elif is_dev_valid:
             session['is_dev'] = True
             log_admin_action('dev', 'Login')
             return redirect(url_for('developer_page'))
@@ -363,6 +367,8 @@ def dev_login_endpoint():
         try:
             is_valid = check_password_hash(saved_dev_pw, password)
         except:
+            pass
+        if not is_valid:
             is_valid = (saved_dev_pw == password)
 
         if is_valid:
@@ -605,9 +611,10 @@ def create_reservation():
         
         type_str = f"[정기 예약 {count}건]" if count > 1 else "[새 예약]"
         
-        # PII Masking
-        safe_name = mask_name(first_res.name)
-        safe_phone = mask_phone(first_res.phone)
+        # PII Masking (Default: ON, can be disabled in developer settings)
+        mask_enabled = get_setting('telegram_mask_info', 'true') == 'true'
+        safe_name = mask_name(first_res.name) if mask_enabled else first_res.name
+        safe_phone = mask_phone(first_res.phone) if mask_enabled else first_res.phone
         
         msg = f"{type_str}\n- 예약자: {safe_name}\n- 전화번호: {safe_phone}\n- 첫 예약: {first_res.start_time.strftime('%Y-%m-%d %H:%M')}"
         if count > 1:
@@ -1534,7 +1541,8 @@ def developer_page():
         'official_email': get_setting('official_email'),
         'smtp_host': get_setting('smtp_host'),
         'smtp_port': get_setting('smtp_port'),
-        'smtp_email': get_setting('smtp_email')
+        'smtp_email': get_setting('smtp_email'),
+        'telegram_mask_info': get_setting('telegram_mask_info', 'true')
     }
 
     # Status Map
@@ -1565,6 +1573,16 @@ def toggle_maintenance():
     set_setting('maintenance_mode', new_val)
     log_admin_action('dev', f'Set Maintenance Mode: {new_val}')
     return jsonify({'success': True, 'mode': new_val})
+
+@app.route('/dev/toggle_masking', methods=['POST'])
+def toggle_masking():
+    if not session.get('is_dev'): return jsonify({'error': 'Unauthorized'}), 401
+    
+    current = get_setting('telegram_mask_info', 'true')
+    new_val = 'false' if current == 'true' else 'true'
+    set_setting('telegram_mask_info', new_val)
+    log_admin_action('dev', f'Set Telegram Masking: {new_val}')
+    return jsonify({'success': True, 'enabled': new_val})
 
 @app.route('/dev/integrity_check', methods=['POST'])
 def integrity_check():

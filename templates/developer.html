@@ -81,6 +81,34 @@
         </div>
     </div>
 </div>
+
+<!-- Telegram Masking Toggle -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6 col-lg-4">
+        <div class="card shadow-sm border-0 h-100">
+            <div class="card-body d-flex align-items-center">
+                <div class="flex-shrink-0">
+                    <div class="rounded-circle p-3 bg-info bg-opacity-10 text-info">
+                        <i class="fas fa-user-shield fa-lg"></i>
+                    </div>
+                </div>
+                <div class="flex-grow-1 ms-3">
+                    <h6 class="text-muted text-uppercase small fw-bold mb-1">텔레그램 개인정보 마스킹</h6>
+                    <div class="d-flex align-items-center justify-content-between">
+                        <h4 class="mb-0 fw-bold" id="maskingLabel">
+                            {{ '활성' if settings.get('telegram_mask_info', 'true') == 'true' else '해제' }}
+                        </h4>
+                        <div class="form-check form-switch">
+                            <input class="form-check-input" type="checkbox" id="maskingSwitch"
+                                style="transform: scale(1.4);" {{ 'checked' if settings.get('telegram_mask_info', 'true'
+                                )=='true' else '' }}>
+                        </div>
+                    </div>
+                    <small class="text-muted">해제 시 텔레그램에 이름/전번 전체 표시</small>
+                </div>
+            </div>
+        </div>
+    </div>
 </div>
 
 <!-- Tabs -->
@@ -361,6 +389,36 @@
                 })
                 .catch(() => {
                     mSwitch.checked = !isChecked;
+                    showAlert('서버 통신 오류');
+                });
+        });
+    }
+
+    // Telegram Masking Toggle
+    const maskSwitch = document.getElementById('maskingSwitch');
+    const maskLabel = document.getElementById('maskingLabel');
+
+    if (maskSwitch) {
+        maskSwitch.addEventListener('change', function () {
+            const isChecked = this.checked;
+            fetch('/dev/toggle_masking', { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        if (data.enabled === 'true') {
+                            maskLabel.innerText = "활성";
+                            showAlert('텔레그램 개인정보 마스킹이 활성화되었습니다.');
+                        } else {
+                            maskLabel.innerText = "해제";
+                            showAlert('텔레그램 개인정보 마스킹이 해제되었습니다.');
+                        }
+                    } else {
+                        maskSwitch.checked = !isChecked;
+                        showAlert('상태 변경 실패');
+                    }
+                })
+                .catch(() => {
+                    maskSwitch.checked = !isChecked;
                     showAlert('서버 통신 오류');
                 });
         });
