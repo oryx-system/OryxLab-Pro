@@ -755,8 +755,60 @@
             document.getElementById('recurringOptions').style.display = 'none';
             document.getElementById('repeatCount').value = '2';
 
+            // Fetch availability and disable booked slots
+            fetchAvailability(dateStr);
+
             reserveModal.show();
 
+        }
+
+        // Fetch and mark booked time slots
+        async function fetchAvailability(dateStr) {
+            try {
+                const res = await fetch(`/api/reservations/availability?date=${dateStr}`);
+                const data = await res.json();
+                const booked = data.booked || [];
+
+                const startSelect = document.getElementById('resStartTime');
+                const endSelect = document.getElementById('resEndTime');
+
+                // Reset all options to enabled
+                Array.from(startSelect.options).forEach(opt => {
+                    opt.disabled = false;
+                    opt.style.color = '';
+                    opt.style.backgroundColor = '';
+                });
+                Array.from(endSelect.options).forEach(opt => {
+                    opt.disabled = false;
+                    opt.style.color = '';
+                    opt.style.backgroundColor = '';
+                });
+
+                // Check each time slot against booked slots
+                booked.forEach(slot => {
+                    const slotStart = slot.start;
+                    const slotEnd = slot.end;
+
+                    // Disable start times that fall within booked slot
+                    Array.from(startSelect.options).forEach(opt => {
+                        if (opt.value >= slotStart && opt.value < slotEnd) {
+                            opt.disabled = true;
+                            opt.style.color = '#999';
+                            opt.style.backgroundColor = '#ffeeee';
+                        }
+                    });
+                });
+
+                // Select first available start time
+                const firstAvailable = Array.from(startSelect.options).find(opt => !opt.disabled);
+                if (firstAvailable) {
+                    startSelect.value = firstAvailable.value;
+                    // Trigger change to update end times
+                    startSelect.dispatchEvent(new Event('change'));
+                }
+            } catch (e) {
+                console.error('Availability fetch error:', e);
+            }
         }
 
         // Toggle Recurring Options

@@ -473,6 +473,36 @@ def get_reservations():
 
     return jsonify(event_list)
 
+@app.route('/api/reservations/availability', methods=['GET'])
+def get_availability():
+    """Return booked time slots for a given date"""
+    date_str = request.args.get('date')
+    if not date_str:
+        return jsonify({'error': 'date parameter required'}), 400
+    
+    try:
+        target_date = datetime.strptime(date_str, '%Y-%m-%d')
+    except ValueError:
+        return jsonify({'error': 'Invalid date format'}), 400
+    
+    day_start = target_date.replace(hour=0, minute=0, second=0)
+    day_end = target_date.replace(hour=23, minute=59, second=59)
+    
+    reservations = Reservation.query.filter(
+        Reservation.start_time >= day_start,
+        Reservation.start_time <= day_end,
+        Reservation.status.in_(['reserved', 'checked_in'])
+    ).all()
+    
+    booked_slots = []
+    for res in reservations:
+        booked_slots.append({
+            'start': res.start_time.strftime('%H:%M'),
+            'end': res.end_time.strftime('%H:%M')
+        })
+    
+    return jsonify({'date': date_str, 'booked': booked_slots})
+
 @app.route('/api/reservations', methods=['POST'])
 def create_reservation():
     data = request.json
@@ -740,6 +770,50 @@ def cancel_reservation(id):
     
     db.session.commit()
     return jsonify({'success': True})
+
+@app.route('/api/reservations/<int:id>/modify', methods=['POST'])
+def modify_reservation(id):
+    """Modify reservation time (with password verification)"""
+    res = Reservation.query.get_or_404(id)
+    data = request.json
+    password = data.get('password')
+    new_start = data.get('new_start')
+    new_end = data.get('new_end')
+    
+    if not password or not new_start or not new_end:
+        return jsonify({'error': '필수 정보가 누락되었습니다.'}), 400
+    
+    # Verify password
+    if not check_password_hash(res.password, password):
+        return jsonify({'error': '비밀번호가 일치하지 않습니다.'}), 403
+    
+    # Parse new times
+    try:
+        new_start_dt = datetime.fromisoformat(new_start)
+        new_end_dt = datetime.fromisoformat(new_end)
+    except ValueError:
+        return jsonify({'error': '날짜 형식이 올바르지 않습니다.'}), 400
+    
+    if new_start_dt < datetime.now():
+        return jsonify({'error': '지난 시간으로는 변경할 수 없습니다.'}), 400
+    
+    # Check for overlaps (excluding current reservation)
+    overlap = Reservation.query.filter(
+        Reservation.id != id,
+        Reservation.start_time < new_end_dt,
+        Reservation.end_time > new_start_dt,
+        Reservation.status.in_(['reserved', 'checked_in'])
+    ).first()
+    
+    if overlap:
+        return jsonify({'error': '해당 시간에 이미 다른 예약이 있습니다.'}), 409
+    
+    # Update reservation
+    res.start_time = new_start_dt
+    res.end_time = new_end_dt
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': '예약이 변경되었습니다.'})
 
 @app.route('/api/checkin', methods=['POST'])
 def checkin_process():

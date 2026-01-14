@@ -101,6 +101,40 @@
     </div>
 </div>
 
+<!-- Modify Modal -->
+<div class="modal fade" id="modifyModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title fw-bold"><i class="fas fa-edit me-2"></i>예약 변경</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="mb-3 text-muted">새로운 예약 시간을 선택해주세요.</p>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">날짜</label>
+                    <input type="date" class="form-control" id="modifyDate">
+                </div>
+                <div class="row">
+                    <div class="col-6">
+                        <label class="form-label fw-bold">시작</label>
+                        <select class="form-select" id="modifyStartTime"></select>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-bold">종료</label>
+                        <select class="form-select" id="modifyEndTime"></select>
+                    </div>
+                </div>
+                <div id="modifyAvailabilityMsg" class="mt-2 small"></div>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-light rounded-pill px-4" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary rounded-pill px-4" id="btnConfirmModify">변경하기</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Checkout Modal -->
 <div class="modal fade" id="checkoutModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
@@ -322,8 +356,10 @@
             let btnHtml = '';
             if (item.status === 'reserved') {
                 // Use data attributes and class for delegation
-                btnHtml = `<button class="btn btn-sm btn-outline-danger rounded-pill px-3 btn-cancel-reservation" 
-                           data-id="${item.id}" data-start="${item.start}">예약 취소</button>`;
+                btnHtml = `<button class="btn btn-sm btn-outline-primary rounded-pill px-3 me-1 btn-modify-reservation" 
+                           data-id="${item.id}" data-start="${item.start}" data-end="${item.end}"><i class="fas fa-edit me-1"></i>변경</button>
+                           <button class="btn btn-sm btn-outline-danger rounded-pill px-3 btn-cancel-reservation" 
+                           data-id="${item.id}" data-start="${item.start}">취소</button>`;
             } else if (item.status === 'checked_in') {
                 btnHtml = `<button class="btn btn-sm btn-success rounded-pill px-3 shadow" onclick="openCheckout()"><i class="fas fa-camera me-1"></i>퇴실/청소 인증</button>`;
             }
@@ -404,14 +440,99 @@
             .catch(err => showAlert('서버 통신 오류'));
     }
 
-    // Event Delegation for Cancel Button
+    // Event Delegation for Modify Button
+    let modifyModal = null;
+    let targetModifyId = null;
+
+    document.addEventListener('DOMContentLoaded', function () {
+        if (typeof bootstrap !== 'undefined') {
+            modifyModal = new bootstrap.Modal(document.getElementById('modifyModal'));
+        }
+        // Populate time options
+        const startSel = document.getElementById('modifyStartTime');
+        const endSel = document.getElementById('modifyEndTime');
+        for (let h = 9; h <= 21; h++) {
+            const t = h.toString().padStart(2, '0') + ':00';
+            startSel.innerHTML += `<option value="${t}">${t}</option>`;
+            const endT = (h + 1).toString().padStart(2, '0') + ':00';
+            endSel.innerHTML += `<option value="${endT}">${endT}</option>`;
+        }
+    });
+
     document.getElementById('historyList').addEventListener('click', function (e) {
+        const modBtn = e.target.closest('.btn-modify-reservation');
+        if (modBtn) {
+            const id = modBtn.getAttribute('data-id');
+            const start = modBtn.getAttribute('data-start');
+            openModify(id, start);
+            return;
+        }
         const btn = e.target.closest('.btn-cancel-reservation');
         if (btn) {
             const id = btn.getAttribute('data-id');
             const start = btn.getAttribute('data-start');
             openCancel(id, start);
         }
+    });
+
+    function openModify(id, startStr) {
+        targetModifyId = id;
+        const dateStr = startStr.split(' ')[0];
+        const timeStr = startStr.split(' ')[1];
+
+        document.getElementById('modifyDate').value = dateStr;
+        document.getElementById('modifyStartTime').value = timeStr;
+
+        // Set min date to today
+        const today = new Date().toISOString().split('T')[0];
+        document.getElementById('modifyDate').min = today;
+
+        if (modifyModal) modifyModal.show();
+    }
+
+    document.getElementById('btnConfirmModify').addEventListener('click', function () {
+        if (!targetModifyId) return;
+
+        const newDate = document.getElementById('modifyDate').value;
+        const newStart = document.getElementById('modifyStartTime').value;
+        const newEnd = document.getElementById('modifyEndTime').value;
+        const password = document.getElementById('myPassword').value;
+
+        if (!newDate || !newStart || !newEnd) {
+            showAlert('날짜와 시간을 선택해주세요.');
+            return;
+        }
+
+        const btn = this;
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>처리 중...';
+
+        fetch(`/api/reservations/${targetModifyId}/modify`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                password: password,
+                new_start: `${newDate}T${newStart}:00`,
+                new_end: `${newDate}T${newEnd}:00`
+            })
+        })
+            .then(res => res.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = '변경하기';
+
+                if (data.success) {
+                    if (modifyModal) modifyModal.hide();
+                    showAlert('예약이 변경되었습니다.', () => loadHistory());
+                } else {
+                    showAlert('변경 실패: ' + data.error);
+                }
+            })
+            .catch(() => {
+                btn.disabled = false;
+                btn.innerHTML = '변경하기';
+                showAlert('서버 통신 오류');
+            });
     });
 
     // Open Cancel Modal
