@@ -363,12 +363,11 @@
 
             for (let i = 9; i <= 21; i++) {
                 const hour = i.toString().padStart(2, '0');
+                // 1시간 단위로 변경
                 startSelect.innerHTML += `<option value="${hour}:00">${hour}:00</option>`;
-                startSelect.innerHTML += `<option value="${hour}:30">${hour}:30</option>`;
 
-                // End time
+                // End time (1시간 단위)
                 const endHour = (i + 1).toString().padStart(2, '0');
-                endSelect.innerHTML += `<option value="${hour}:30">${hour}:30</option>`;
                 endSelect.innerHTML += `<option value="${endHour}:00">${endHour}:00</option>`;
             }
         }
