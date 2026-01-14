@@ -592,8 +592,8 @@
             return trimmed;
         }
 
-        // Toggle Org Name field based on applicant type
-        function toggleOrgName() {
+        // Toggle Org Name field based on applicant type (global function for inline handler)
+        window.toggleOrgName = function () {
             const isGroup = document.getElementById('typeGroup').checked;
             const orgField = document.getElementById('orgNameField');
             if (orgField) {
