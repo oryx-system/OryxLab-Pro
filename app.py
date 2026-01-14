@@ -702,8 +702,11 @@ def download_ics(id):
     c = Calendar()
     e = Event()
     e.name = f"지혜마루 예약 ({res.name})"
-    e.begin = res.start_time
-    e.end = res.end_time
+    # Use Arrow with KST timezone
+    import arrow
+    kst = 'Asia/Seoul'
+    e.begin = arrow.get(res.start_time, kst)
+    e.end = arrow.get(res.end_time, kst)
     e.location = "지혜마루 작은 도서관"
     c.events.add(e)
     
