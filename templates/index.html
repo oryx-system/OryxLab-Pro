@@ -295,6 +295,31 @@
         }
         populateTimeOptions();
 
+        // Update end time options based on start time
+        document.getElementById('resStartTime').addEventListener('change', function () {
+            const startValue = this.value;
+            const endSelect = document.getElementById('resEndTime');
+
+            Array.from(endSelect.options).forEach(option => {
+                // Disable options that are <= start time
+                if (option.value <= startValue) {
+                    option.disabled = true;
+                    option.style.color = '#ccc';
+                } else {
+                    option.disabled = false;
+                    option.style.color = '';
+                }
+            });
+
+            // If current selection is invalid, select first valid option
+            if (endSelect.value <= startValue) {
+                const firstValid = Array.from(endSelect.options).find(opt => opt.value > startValue);
+                if (firstValid) {
+                    endSelect.value = firstValid.value;
+                }
+            }
+        });
+
         // Load Remembered Info
         document.getElementById('rememberMe').checked = true;
         document.getElementById('resName').value = localStorage.getItem('userName') || '';
