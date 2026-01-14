@@ -84,6 +84,79 @@
                             placeholder="예: 독서 모임, 코딩 수업, 인문학 강의 등">
                     </div>
 
+                    <!-- New Fields: Applicant Type -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">신청자 유형</label>
+                        <div class="d-flex gap-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="applicantType" id="typePersonal"
+                                    value="개인" checked>
+                                <label class="form-check-label" for="typePersonal">개인</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="applicantType" id="typeGroup"
+                                    value="단체">
+                                <label class="form-check-label" for="typeGroup">단체</label>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Facilities -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">사용시설 <span class="text-muted small">(선택)</span></label>
+                        <div class="row">
+                            <div class="col-12 mb-2">
+                                <span class="small text-muted">기본시설:</span>
+                                <div class="form-check form-check-inline ms-2">
+                                    <input class="form-check-input" type="checkbox" id="facLib" value="자료실">
+                                    <label class="form-check-label small" for="facLib">자료실</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="facCulture" value="문화강좌실">
+                                    <label class="form-check-label small" for="facCulture">문화강좌실</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="facCook" value="조리실">
+                                    <label class="form-check-label small" for="facCook">조리실</label>
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <span class="small text-muted">부대시설:</span>
+                                <div class="form-check form-check-inline ms-2">
+                                    <input class="form-check-input" type="checkbox" id="facBeam" value="빔프로젝트">
+                                    <label class="form-check-label small" for="facBeam">빔프로젝트</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="checkbox" id="facScreen" value="스크린">
+                                    <label class="form-check-label small" for="facScreen">스크린</label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Expected Count -->
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">이용예정인원 <span class="text-muted small">(선택)</span></label>
+                        <input type="number" class="form-control" id="resExpectedCount" min="1" max="100"
+                            placeholder="예: 10">
+                    </div>
+
+                    <!-- Optional Fields Row -->
+                    <div class="row">
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">생년월일 <span class="text-muted small">(선택)</span></label>
+                            <input type="text" class="form-control" id="resBirthDate" placeholder="예: 1990-01-01">
+                        </div>
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label fw-bold">이메일 <span class="text-muted small">(선택)</span></label>
+                            <input type="email" class="form-control" id="resEmail" placeholder="예: example@mail.com">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">주소 <span class="text-muted small">(선택)</span></label>
+                        <input type="text" class="form-control" id="resAddress" placeholder="예: 충남 금산군...">
+                    </div>
+
                     <!-- Recurring Reservation -->
                     <div class="mb-4 p-3 bg-light rounded shadow-sm">
                         <div class="form-check form-switch">
@@ -717,7 +790,15 @@
                 end: `${selectedDate}T${endTime}:00`,
                 signature: signatureData,
                 repeat_type: document.getElementById('checkRecurring').checked ? 'weekly' : null,
-                repeat_count: document.getElementById('checkRecurring').checked ? parseInt(document.getElementById('repeatCount').value) : 1
+                repeat_count: document.getElementById('checkRecurring').checked ? parseInt(document.getElementById('repeatCount').value) : 1,
+                // New Fields
+                applicant_type: document.querySelector('input[name="applicantType"]:checked')?.value || '개인',
+                facility_basic: [...document.querySelectorAll('#facLib:checked, #facCulture:checked, #facCook:checked')].map(c => c.value).join(','),
+                facility_extra: [...document.querySelectorAll('#facBeam:checked, #facScreen:checked')].map(c => c.value).join(','),
+                expected_count: document.getElementById('resExpectedCount').value || null,
+                birth_date: document.getElementById('resBirthDate').value || '',
+                address: document.getElementById('resAddress').value || '',
+                email: document.getElementById('resEmail').value || ''
             };
 
             fetch('/api/reservations', {

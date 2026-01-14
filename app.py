@@ -119,10 +119,18 @@ class Reservation(db.Model):
     end_time = db.Column(db.DateTime, nullable=False)
     purpose = db.Column(db.String(200), nullable=True)
     status = db.Column(db.String(20), default='reserved') # reserved, checked_in, ended, cancelled, noshow_penalty
-    admin_memo = db.Column(db.Text, nullable=True) # New Field
+    admin_memo = db.Column(db.Text, nullable=True)
     signature_path = db.Column(db.String(255), nullable=True) # Legacy (File Path)
     signature_blob = db.Column(db.LargeBinary, nullable=True) # New (Database Storage)
     checkout_photo = db.Column(db.String(255), nullable=True) # New: Cleaning photo
+    # New Fields for Application Form
+    applicant_type = db.Column(db.String(10), default='개인')  # 개인/단체
+    facility_basic = db.Column(db.String(100), nullable=True)  # 자료실,문화강좌실,조리실
+    facility_extra = db.Column(db.String(100), nullable=True)  # 빔프로젝트,스크린
+    expected_count = db.Column(db.Integer, nullable=True)  # 이용예정인원
+    birth_date = db.Column(db.String(20), nullable=True)  # 생년월일
+    address = db.Column(db.String(200), nullable=True)  # 주소
+    email = db.Column(db.String(100), nullable=True)  # 이메일
     created_at = db.Column(db.DateTime, default=datetime.now)
 
     def to_dict(self):
@@ -594,7 +602,15 @@ def create_reservation():
             purpose=purpose.strip(),
             start_time=s_time,
             end_time=e_time,
-            signature_blob=sig_blob
+            signature_blob=sig_blob,
+            # New Fields
+            applicant_type=data.get('applicant_type', '개인'),
+            facility_basic=data.get('facility_basic', ''),
+            facility_extra=data.get('facility_extra', ''),
+            expected_count=int(data.get('expected_count')) if data.get('expected_count') else None,
+            birth_date=data.get('birth_date', ''),
+            address=data.get('address', ''),
+            email=data.get('email', '')
         )
         reservations_to_create.append(new_res)
 
@@ -984,22 +1000,47 @@ def _generate_pdf_buffer(res):
          
     date_str_start = res.start_time.strftime('%Y년 %m월 %d일 %H시 부터')
     date_str_end = res.end_time.strftime('%Y년 %m월 %d일 %H시 까지')
+    
+    # Build facility strings with checkboxes
+    facility_basic_list = (res.facility_basic or '').split(',') if res.facility_basic else []
+    fb_display = ""
+    for f in ['자료실', '문화강좌실', '조리실']:
+        if f in facility_basic_list:
+            fb_display += f"■ {f}   "
+        else:
+            fb_display += f"□ {f}   "
+    
+    facility_extra_list = (res.facility_extra or '').split(',') if res.facility_extra else []
+    fe_display = ""
+    for f in ['빔프로젝트', '스크린']:
+        if f in facility_extra_list:
+            fe_display += f"■ {f}   "
+        else:
+            fe_display += f"□ {f}   "
+    
+    # Expected count
+    count_display = f"{res.expected_count} 명" if res.expected_count else "명"
+    
+    # Birth date / Address / Email
+    birth_display = res.birth_date or ""
+    addr_display = res.address or ""
+    email_display = res.email or ""
 
     data = [
         [PB("사용 목적 (회의, 행사 등)"), "", P(res.purpose), "", ""],
         [PB("신청인<br/>(사용자 또는 단체)"), PB("사용자(단체)명"), P(res.name), PB("전화번호"), P(p_str)],
-        ["", PB("대표자(성명)"), P(res.name), PB("사업자등록번호<br/>(생년월일)"), P("")],
-        ["", PB("주소"), P(""), "", ""],
-        ["", PB("담당자"), P(res.name), PB("E-mail"), P("")],
-        [PB("사용시설"), PB("기본시설"), PL("□ 자료실   □ 문화강좌실   □ 조리실"), "", ""],
-        ["", PB("부대시설 및<br/>설비"), PL("□ 빔프로젝트   □ 스크린"), "", ""],
+        ["", PB("대표자(성명)"), P(res.name), PB("사업자등록번호<br/>(생년월일)"), P(birth_display)],
+        ["", PB("주소"), P(addr_display), "", ""],
+        ["", PB("담당자"), P(res.name), PB("E-mail"), P(email_display)],
+        [PB("사용시설"), PB("기본시설"), PL(fb_display), "", ""],
+        ["", PB("부대시설 및<br/>설비"), PL(fe_display), "", ""],
         [PB("사용기간"), P(f"{date_str_start}<br/>{date_str_end}"), "", "", PB("(   일간)<br/>*횟수 1회")],
-        [PB("이용예정인원"), P("10 명"), "", "", ""],
+        [PB("이용예정인원"), P(count_display), "", "", ""],
         [PB("사용료 등"), P("해당없음"), "", "", ""]
     ]
     
-    # Row heights matching original proportions
-    row_heights = [14*mm, 13*mm, 13*mm, 13*mm, 13*mm, 13*mm, 13*mm, 18*mm, 13*mm, 13*mm]
+    # Row heights - increased to match original proportions
+    row_heights = [18*mm, 16*mm, 16*mm, 16*mm, 16*mm, 16*mm, 16*mm, 22*mm, 16*mm, 16*mm]
     
     t_style = TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'Malgun'),
