@@ -1693,6 +1693,39 @@ def download_logs_db():
     else:
         return "Log DB does not exist yet.", 404
 
+@app.route('/dev/restore_db', methods=['POST'])
+def restore_db():
+    if not session.get('is_dev'): return jsonify({'error': 'Unauthorized'}), 401
+    
+    if 'file' not in request.files:
+        return jsonify({'error': '파일이 업로드되지 않았습니다.'}), 400
+    
+    file = request.files['file']
+    if file.filename == '':
+        return jsonify({'error': '파일이 선택되지 않았습니다.'}), 400
+    
+    # Validate extension
+    if not file.filename.endswith(('.sqlite', '.db')):
+        return jsonify({'error': '올바른 SQLite 파일이 아닙니다.'}), 400
+    
+    try:
+        # Create backup of current DB first
+        backup_name = f'library_pre_restore_{datetime.now().strftime("%Y%m%d_%H%M%S")}.sqlite'
+        backup_path = os.path.join(instance_path, backup_name)
+        
+        import shutil
+        if os.path.exists(db_path):
+            shutil.copy2(db_path, backup_path)
+        
+        # Save uploaded file
+        file.save(db_path)
+        
+        log_admin_action('dev', f'Restored DB from uploaded file: {file.filename}')
+        return jsonify({'success': True, 'backup': backup_name})
+        
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 import qrcode
 
 def generate_random_color():
