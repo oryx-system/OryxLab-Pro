@@ -1030,19 +1030,23 @@ def _generate_pdf_buffer(res):
 
 
     # Display name based on applicant type
+    # 단체: 사용자명=단체명, 대표자=이름, 담당자=미기입
+    # 개인: 사용자명=이름, 대표자=미기입, 담당자=미기입
     if res.applicant_type == '단체' and res.org_name:
-        display_name = res.org_name
-        rep_name = res.name  # 대표자
+        display_name = res.org_name  # 단체명
+        rep_name = res.name  # 대표자(성명)
+        manager_name = ""  # 담당자 미기입
     else:
-        display_name = res.name
-        rep_name = res.name
+        display_name = res.name  # 이름
+        rep_name = ""  # 대표자 미기입
+        manager_name = ""  # 담당자 미기입
 
     data = [
         [PB("사용 목적 (회의, 행사 등)"), "", P(res.purpose), "", ""],
         [PB("신청인<br/>(사용자 또는 단체)"), PB("사용자(단체)명"), P(display_name), PB("전화번호"), P(p_str)],
         ["", PB("대표자(성명)"), P(rep_name), PB("사업자등록번호<br/>(생년월일)"), P(birth_display)],
         ["", PB("주소"), P(addr_display), "", ""],
-        ["", PB("담당자"), P(res.name), PB("E-mail"), P(email_display)],
+        ["", PB("담당자"), P(manager_name), PB("E-mail"), P(email_display)],
         [PB("사용시설"), PB("기본시설"), PL(fb_display), "", ""],
         ["", PB("부대시설 및<br/>설비"), PL(fe_display), "", ""],
         [PB("사용기간"), P(f"{date_str_start}<br/>{date_str_end}"), "", "", PB("(   일간)<br/>*횟수 1회")],
