@@ -972,7 +972,7 @@ def _generate_pdf_buffer(res):
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(buffer, pagesize=A4, 
                             leftMargin=20*mm, rightMargin=20*mm, 
-                            topMargin=20*mm, bottomMargin=12*mm)
+                            topMargin=20*mm, bottomMargin=8*mm)
     
     elements = []
     
@@ -1050,8 +1050,8 @@ def _generate_pdf_buffer(res):
         [PB("사용료 등"), P("해당없음"), "", "", ""]
     ]
     
-    # Row heights - adjusted to fit on single page
-    row_heights = [12*mm, 11*mm, 11*mm, 11*mm, 11*mm, 11*mm, 11*mm, 16*mm, 11*mm, 11*mm]
+    # Row heights - balanced to fill page and keep recipient near bottom
+    row_heights = [14*mm, 13*mm, 13*mm, 13*mm, 13*mm, 13*mm, 13*mm, 18*mm, 13*mm, 13*mm]
     
     t_style = TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'Malgun'),
