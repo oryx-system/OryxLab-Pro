@@ -922,6 +922,16 @@ def backup_db():
 
 
 
+def _draw_border(canvas, doc):
+    canvas.saveState()
+    w, h = A4
+    margin = 15*mm # Match the layout margin or slightly outside
+    canvas.setLineWidth(1)
+    # Draw border slightly larger than margins to enclose content nicely
+    # doc margins are 15mm. Let's draw border at 15mm.
+    canvas.rect(margin, margin, w - 2*margin, h - 2*margin)
+    canvas.restoreState()
+
 def _generate_pdf_buffer(res):
     # 1. Register Font
     font_path = "C:/Windows/Fonts/malgun.ttf"
@@ -934,19 +944,19 @@ def _generate_pdf_buffer(res):
 
     try:
         pdfmetrics.registerFont(TTFont('Malgun', font_path))
-        # Try registering bold if available, else map to regular
         bold_path = font_path.replace('.ttf', 'bd.ttf') 
         if os.path.exists(bold_path):
              pdfmetrics.registerFont(TTFont('MalgunBd', bold_path))
         else:
-             pdfmetrics.registerFont(TTFont('MalgunBd', font_path)) # Fallback
+             pdfmetrics.registerFont(TTFont('MalgunBd', font_path))
     except Exception as e:
         print(f"PDF Font Registration Error: {e}")
         pass
 
     buffer = io.BytesIO()
+    # Margins 20mm to give space for border drawn at 15mm
     doc = SimpleDocTemplate(buffer, pagesize=A4, 
-                            leftMargin=15*mm, rightMargin=15*mm, 
+                            leftMargin=20*mm, rightMargin=20*mm, 
                             topMargin=20*mm, bottomMargin=20*mm)
     
     elements = []
@@ -956,11 +966,12 @@ def _generate_pdf_buffer(res):
     style_title = ParagraphStyle('Title', fontName='MalgunBd', fontSize=22, alignment=TA_CENTER)
     style_cell_center = ParagraphStyle('CellCenter', fontName='Malgun', fontSize=10, alignment=TA_CENTER, leading=14)
     style_cell_center_bold = ParagraphStyle('CellCenterBold', fontName='MalgunBd', fontSize=10, alignment=TA_CENTER, leading=14)
-    style_footer_text = ParagraphStyle('FooterText', fontName='Malgun', fontSize=11, alignment=TA_LEFT, leading=18)
-    style_footer_date = ParagraphStyle('FooterDate', fontName='Malgun', fontSize=12, alignment=TA_CENTER, spaceBefore=10*mm, spaceAfter=10*mm)
-    style_recipient = ParagraphStyle('Recipient', fontName='MalgunBd', fontSize=20, alignment=TA_CENTER, spaceBefore=20*mm)
+    style_footer_text = ParagraphStyle('FooterText', fontName='Malgun', fontSize=11, alignment=TA_LEFT, leading=16)
+    style_footer_date = ParagraphStyle('FooterDate', fontName='Malgun', fontSize=12, alignment=TA_CENTER, spaceBefore=40*mm, spaceAfter=10*mm)
+    style_recipient = ParagraphStyle('Recipient', fontName='MalgunBd', fontSize=20, alignment=TA_CENTER, spaceBefore=30*mm)
 
     # 1. Title
+    elements.append(Spacer(1, 10*mm))
     elements.append(Paragraph("군북지혜마루작은도서관 시설 사용 허가 신청서", style_title))
     elements.append(Spacer(1, 10*mm))
 
@@ -969,17 +980,16 @@ def _generate_pdf_buffer(res):
     def PB(text): return Paragraph(text, style_cell_center_bold)
 
     # Data Preparation
-    # Format Phone
     p_str = res.phone
     if len(p_str) == 11 and p_str.startswith('010'):
          p_str = f"{p_str[:3]}-{p_str[3:7]}-{p_str[7:]}"
          
-    # Format Date
     date_str_start = res.start_time.strftime('%Y년 %m월 %d일 %H시 부터')
     date_str_end = res.end_time.strftime('%Y년 %m월 %d일 %H시 까지')
     
     # Grid Data
-    # Col Widths: [30, 30, 45, 30, 45] (Total 180)
+    # Adjusted Widths for 170mm total (210 - 20*2)
+    # 28, 28, 42, 28, 44 = 170
     
     data = [
         # Row 0: Purpose
@@ -987,11 +997,11 @@ def _generate_pdf_buffer(res):
         # Row 1: Applicant - Name/Phone
         [PB("신청인\n(사용자 또는 단체)"), PB("사용자(단체)명"), P(res.name), PB("전화번호"), P(p_str)],
         # Row 2: Applicant - Rep/RegNum
-        ["", PB("대표자(성명)"), P(res.name), PB("사업자등록번호\n(생년월일)"), P("")], # RegNum Empty
+        ["", PB("대표자(성명)"), P(res.name), PB("사업자등록번호\n(생년월일)"), P("")],
         # Row 3: Applicant - Addr
-        ["", PB("주소"), P(""), "", ""], # Address Empty
+        ["", PB("주소"), P(""), "", ""],
         # Row 4: Applicant - Manager/Email
-        ["", PB("담당자"), P(res.name), PB("E-mail"), P("")], # Email Empty
+        ["", PB("담당자"), P(res.name), PB("E-mail"), P("")],
         # Row 5: Facilities - Basic
         [PB("사용시설"), PB("기본시설"), P("□ 자료실   □ 문화강좌실   □ 조리실"), "", ""],
         # Row 6: Facilities - Extra
@@ -999,55 +1009,38 @@ def _generate_pdf_buffer(res):
         # Row 7: Period
         [PB("사용기간"), P(f"{date_str_start}\n{date_str_end}"), "", "", PB("(   일간)\n*횟수  1 회")],
         # Row 8: Count
-        [PB("이용예정인원"), P("10 명"), "", "", ""], # Fixed 10 or from res? using 10 for now as per mock
+        [PB("이용예정인원"), P("10 명"), "", "", ""],
         # Row 9: Fee
         [PB("사용료 등"), P("해당없음"), "", "", ""]
     ]
     
-    # Table Style
     t_style = TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'Malgun'),
         ('GRID', (0,0), (-1,-1), 0.5, colors.black),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
         ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        
-        ('SPAN', (0,0), (1,0)), # Purpose Label
-        ('SPAN', (2,0), (4,0)), # Purpose Value
-        
-        ('SPAN', (0,1), (0,4)), # Applicant Header
-        ('SPAN', (2,3), (4,3)), # Address Value
-        
-        ('SPAN', (0,5), (0,6)), # Facilities Header
-        ('SPAN', (2,5), (4,5)), # Facilities Basic
-        ('SPAN', (2,6), (4,6)), # Facilities Extra
-        
-        ('SPAN', (1,7), (3,7)), # Period Value
-        ('SPAN', (1,8), (4,8)), # Count Value
-        ('SPAN', (1,9), (4,9)), # Fee Value
-        
+        ('SPAN', (0,0), (1,0)), ('SPAN', (2,0), (4,0)),
+        ('SPAN', (0,1), (0,4)), ('SPAN', (2,3), (4,3)),
+        ('SPAN', (0,5), (0,6)), ('SPAN', (2,5), (4,5)), ('SPAN', (2,6), (4,6)),
+        ('SPAN', (1,7), (3,7)), ('SPAN', (1,8), (4,8)), ('SPAN', (1,9), (4,9)),
         ('MINROWHEIGHT', (0,0), (-1,-1), 12*mm),
     ])
     
-    t = Table(data, colWidths=[30*mm, 30*mm, 45*mm, 30*mm, 45*mm])
+    t = Table(data, colWidths=[28*mm, 28*mm, 42*mm, 28*mm, 44*mm])
     t.setStyle(t_style)
     elements.append(t)
     elements.append(Spacer(1, 10*mm))
     
-    # Footer Text
     elements.append(Paragraph("위와 같이 「금산군 작은도서관 설치 및 운영 조례」 제4조제4항에 따라", style_footer_text))
     elements.append(Paragraph("작은도서관의 (      시설 사용      ) 사용을 신청합니다.", style_footer_text))
     elements.append(Paragraph(datetime.now().strftime('%Y 년   %m 월   %d 일'), style_footer_date))
     
-    # Signature Section with Image Support
-    sig_content = ""
-    # Check for Signature Image
+    # Signature
     sig_img_flowable = None
     if res.signature_blob:
         try:
-            # Platypus Image expects a file-like object or path.
-            # Convert blob to BytesIO
             img_io = io.BytesIO(res.signature_blob)
-            # Create Platypus Image. Size approx 30mm x 15mm
+            # Resize logic if needed, but simple scaling is mostly fine for forms
             sig_img_flowable = PlatypusImage(img_io, width=30*mm, height=15*mm)
         except:
             pass
@@ -1056,22 +1049,8 @@ def _generate_pdf_buffer(res):
         if os.path.exists(sig_full_path):
              sig_img_flowable = PlatypusImage(sig_full_path, width=30*mm, height=15*mm)
              
-    # We use a nested table for the signature part
-    # Structure: [Label, Name, (Signature + Text)]
-    # Or just [Label, Name, SignatureImage] and Text separately?
-    # The form says "(서명 또는 날인)" typically effectively under or next to.
-    
-    # Let's clean this up. we want:
-    # 신청인(단체명)    홍 길 동    (Image) (서명 또는 날인)
-    # But (서명 또는 날인) is text. Image should be strictly ABOVE or ON LEFT of text?
-    # Usually Image is ON TOP of the place where signature goes.
-    
-    # ReportLab Table limits absolute positioning.
-    # We will put the image in a cell content if available.
-    
     sig_cell = Paragraph("(서명 또는 날인)", style_cell_center)
     if sig_img_flowable:
-        # Combine Image and Text in a list for the cell? No, Table cell takes list of flowables.
         sig_cell = [sig_img_flowable, Paragraph("(서명 또는 날인)", style_cell_center)]
     
     sig_data = [
@@ -1086,7 +1065,7 @@ def _generate_pdf_buffer(res):
         ('ALIGN', (1,0), (1,1), 'CENTER'),
         ('ALIGN', (2,0), (2,1), 'RIGHT'),
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('SPAN', (2,0), (2,1)) # Signature cell spans 2 rows
+        ('SPAN', (2,0), (2,1))
     ]))
     sig_table.hAlign = 'RIGHT'
     elements.append(sig_table)
@@ -1094,7 +1073,8 @@ def _generate_pdf_buffer(res):
     
     elements.append(Paragraph("금산다락원장  귀하", style_recipient))
 
-    doc.build(elements)
+    # Build with Border Callback
+    doc.build(elements, onFirstPage=_draw_border, onLaterPages=_draw_border)
     buffer.seek(0)
     return buffer
 
