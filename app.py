@@ -1050,8 +1050,8 @@ def _generate_pdf_buffer(res):
         [PB("사용료 등"), P("해당없음"), "", "", ""]
     ]
     
-    # Row heights - balanced to fill page and keep recipient near bottom
-    row_heights = [14*mm, 13*mm, 13*mm, 13*mm, 13*mm, 13*mm, 13*mm, 18*mm, 13*mm, 13*mm]
+    # Row heights - push content down toward bottom
+    row_heights = [15*mm, 14*mm, 14*mm, 14*mm, 14*mm, 14*mm, 14*mm, 20*mm, 14*mm, 14*mm]
     
     t_style = TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'Malgun'),
