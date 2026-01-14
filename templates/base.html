@@ -210,6 +210,19 @@
 
             modal.show();
         };
+
+        // Close hamburger menu when clicking outside
+        document.addEventListener('click', function (e) {
+            const navbar = document.getElementById('navbarNav');
+            const toggler = document.querySelector('.navbar-toggler');
+
+            if (navbar && navbar.classList.contains('show')) {
+                // Check if click is outside navbar and toggler
+                if (!navbar.contains(e.target) && !toggler.contains(e.target)) {
+                    bootstrap.Collapse.getInstance(navbar)?.hide();
+                }
+            }
+        });
     </script>
     {% block scripts %}{% endblock %}
 </body>

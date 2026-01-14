@@ -1838,19 +1838,6 @@ def download_qr_poster():
     draw.text((width/2, text_y), "스마트폰 카메라를 켜고", font=desc_font, fill="#555", anchor="mm")
     draw.text((width/2, text_y + 60), "위 QR 코드를 스캔하세요", font=desc_font, fill="#555", anchor="mm")
 
-    # --- Manual Token Box ---
-    box_y = text_y + 130
-    box_width = 900
-    box_height = 240
-    box_x = (width - box_width) // 2
-    
-    # Light Blue Box
-    draw.rectangle([box_x, box_y, box_x + box_width, box_y + box_height], fill="#F0F8FF", outline="#003366", width=3)
-    
-    # Box Content
-    draw.text((width/2, box_y + 70), "카메라 오류 시 수동 입력 코드", font=token_label_font, fill="#E74C3C", anchor="mm")
-    draw.text((width/2, box_y + 160), door_token, font=token_font, fill="#003366", anchor="mm")
-
     # --- Footer ---
     draw.text((width/2, height - 80), "문의: 관리자 호출", font=footer_font, fill="#999", anchor="mm")
     
