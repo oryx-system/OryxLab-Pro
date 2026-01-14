@@ -773,7 +773,7 @@ def cancel_reservation(id):
 
 @app.route('/api/reservations/<int:id>/modify', methods=['POST'])
 def modify_reservation(id):
-    """Modify reservation time (with password verification)"""
+    """Modify reservation: cancel original and create new one"""
     res = Reservation.query.get_or_404(id)
     data = request.json
     password = data.get('password')
@@ -808,12 +808,32 @@ def modify_reservation(id):
     if overlap:
         return jsonify({'error': '해당 시간에 이미 다른 예약이 있습니다.'}), 409
     
-    # Update reservation
-    res.start_time = new_start_dt
-    res.end_time = new_end_dt
+    # Cancel original reservation
+    res.status = 'cancelled'
+    
+    # Create new reservation with same info
+    new_res = Reservation(
+        name=res.name,
+        phone=res.phone,
+        password=res.password,
+        purpose=res.purpose,
+        start_time=new_start_dt,
+        end_time=new_end_dt,
+        status='reserved',
+        signature_blob=res.signature_blob,
+        applicant_type=res.applicant_type,
+        org_name=res.org_name,
+        facility_basic=res.facility_basic,
+        facility_extra=res.facility_extra,
+        expected_count=res.expected_count,
+        birth_date=res.birth_date,
+        address=res.address,
+        email=res.email
+    )
+    db.session.add(new_res)
     db.session.commit()
     
-    return jsonify({'success': True, 'message': '예약이 변경되었습니다.'})
+    return jsonify({'success': True, 'message': '예약이 변경되었습니다.', 'new_id': new_res.id})
 
 @app.route('/api/checkin', methods=['POST'])
 def checkin_process():
