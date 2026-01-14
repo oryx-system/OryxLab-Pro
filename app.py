@@ -925,10 +925,8 @@ def backup_db():
 def _draw_border(canvas, doc):
     canvas.saveState()
     w, h = A4
-    margin = 15*mm # Match the layout margin or slightly outside
+    margin = 15*mm
     canvas.setLineWidth(1)
-    # Draw border slightly larger than margins to enclose content nicely
-    # doc margins are 15mm. Let's draw border at 15mm.
     canvas.rect(margin, margin, w - 2*margin, h - 2*margin)
     canvas.restoreState()
 
@@ -954,26 +952,25 @@ def _generate_pdf_buffer(res):
         pass
 
     buffer = io.BytesIO()
-    # Increased Margins for filled look
+    # Margins: 20mm Top/Bottom to be safe
     doc = SimpleDocTemplate(buffer, pagesize=A4, 
                             leftMargin=20*mm, rightMargin=20*mm, 
-                            topMargin=25*mm, bottomMargin=25*mm)
+                            topMargin=20*mm, bottomMargin=20*mm)
     
     elements = []
     
-    # Styles (Bigger Fonts)
     styles = getSampleStyleSheet()
-    style_title = ParagraphStyle('Title', fontName='MalgunBd', fontSize=26, alignment=TA_CENTER)
-    style_cell_center = ParagraphStyle('CellCenter', fontName='Malgun', fontSize=12, alignment=TA_CENTER, leading=16)
-    style_cell_center_bold = ParagraphStyle('CellCenterBold', fontName='MalgunBd', fontSize=12, alignment=TA_CENTER, leading=16)
-    style_footer_text = ParagraphStyle('FooterText', fontName='Malgun', fontSize=12, alignment=TA_LEFT, leading=20)
-    style_footer_date = ParagraphStyle('FooterDate', fontName='Malgun', fontSize=14, alignment=TA_CENTER, spaceBefore=15*mm, spaceAfter=15*mm)
-    style_recipient = ParagraphStyle('Recipient', fontName='MalgunBd', fontSize=24, alignment=TA_CENTER, spaceBefore=10*mm)
+    style_title = ParagraphStyle('Title', fontName='MalgunBd', fontSize=24, alignment=TA_CENTER)
+    style_cell_center = ParagraphStyle('CellCenter', fontName='Malgun', fontSize=11, alignment=TA_CENTER, leading=15)
+    style_cell_center_bold = ParagraphStyle('CellCenterBold', fontName='MalgunBd', fontSize=11, alignment=TA_CENTER, leading=15)
+    style_footer_text = ParagraphStyle('FooterText', fontName='Malgun', fontSize=11, alignment=TA_LEFT, leading=18)
+    style_footer_date = ParagraphStyle('FooterDate', fontName='Malgun', fontSize=13, alignment=TA_CENTER, spaceBefore=4*mm, spaceAfter=4*mm)
+    style_recipient = ParagraphStyle('Recipient', fontName='MalgunBd', fontSize=22, alignment=TA_CENTER, spaceBefore=8*mm)
 
     # 1. Title
-    elements.append(Spacer(1, 15*mm))
+    elements.append(Spacer(1, 10*mm))
     elements.append(Paragraph("군북지혜마루작은도서관 시설 사용 허가 신청서", style_title))
-    elements.append(Spacer(1, 15*mm))
+    elements.append(Spacer(1, 10*mm))
 
     # Helper Wrappers
     def P(text): return Paragraph(text, style_cell_center)
@@ -987,10 +984,13 @@ def _generate_pdf_buffer(res):
     date_str_start = res.start_time.strftime('%Y년 %m월 %d일 %H시 부터')
     date_str_end = res.end_time.strftime('%Y년 %m월 %d일 %H시 까지')
     
-    # Row Heights for filling page
-    rh_norm = 14*mm
-    rh_tall = 18*mm
-    rh_period = 30*mm
+    # Grid Data
+    # 28, 28, 42, 28, 44 = 170
+    
+    # Adjusted Row Heights to fit single page (V5)
+    rh_norm = 13*mm 
+    rh_tall = 16*mm 
+    rh_period = 25*mm
     
     row_heights = [
         rh_tall,    # Purpose
@@ -1032,7 +1032,7 @@ def _generate_pdf_buffer(res):
     t = Table(data, colWidths=[28*mm, 28*mm, 42*mm, 28*mm, 44*mm], rowHeights=row_heights)
     t.setStyle(t_style)
     elements.append(t)
-    elements.append(Spacer(1, 15*mm))
+    elements.append(Spacer(1, 10*mm))
     
     elements.append(Paragraph("위와 같이 「금산군 작은도서관 설치 및 운영 조례」 제4조제4항에 따라", style_footer_text))
     elements.append(Paragraph("작은도서관의 (      시설 사용      ) 사용을 신청합니다.", style_footer_text))
@@ -1060,10 +1060,10 @@ def _generate_pdf_buffer(res):
         ["성   명(대표자)", res.name, ""]
     ]
     
-    sig_table = Table(sig_data, colWidths=[40*mm, 40*mm, 40*mm], rowHeights=[15*mm, 15*mm])
+    sig_table = Table(sig_data, colWidths=[40*mm, 40*mm, 40*mm], rowHeights=[14*mm, 14*mm])
     sig_table.setStyle(TableStyle([
         ('FONTNAME', (0,0), (-1,-1), 'Malgun'),
-        ('FONTSIZE', (0,0), (-1,-1), 12),
+        ('FONTSIZE', (0,0), (-1,-1), 11),
         ('ALIGN', (0,0), (0,1), 'LEFT'), 
         ('ALIGN', (1,0), (1,1), 'CENTER'),
         ('ALIGN', (2,0), (2,1), 'RIGHT'),
@@ -1072,8 +1072,8 @@ def _generate_pdf_buffer(res):
     ]))
     sig_table.hAlign = 'RIGHT'
     elements.append(sig_table)
+    elements.append(Spacer(1, 10*mm))
     
-    elements.append(Spacer(1, 15*mm))
     elements.append(Paragraph("금산다락원장  귀하", style_recipient))
 
     doc.build(elements, onFirstPage=_draw_border, onLaterPages=_draw_border)
