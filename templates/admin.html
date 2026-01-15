@@ -66,12 +66,14 @@
                             <i class="fas fa-file-pdf me-1"></i>신청서 모음 전송
                         </button>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#" onclick="sendBulkReport('week')">지난 1주 (주간)</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="sendBulkReport('half')">지난 15일 (보름)</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="sendBulkReport('month')">지난 30일 (월간)</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="showBulkReportModal('week')">지난 1주 (주간)</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="showBulkReportModal('half')">지난 15일 (보름)</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="showBulkReportModal('month')">지난 30일 (월간)</a></li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li><a class="dropdown-item" href="#" onclick="showBulkReportModal('custom')">🔍 현재 검색 결과 보내기</a></li>
                         </ul>
                     </div>
-                    <a href="/admin/download_excel" class="btn btn-success btn-sm"><i
+                    <a href="#" onclick="downloadExcelWithFilters(); return false;" class="btn btn-success btn-sm"><i
                             class="fas fa-file-excel me-1"></i> 엑셀</a>
                 </div>
             </div>
@@ -93,8 +95,7 @@
                                 <option value="checked_in">이용중</option>
                                 <option value="ended">종료됨</option>
                                 <option value="cancelled">취소됨</option>
-                                <option value="noshow_penalty">노쇼</option>
-                                <option value="blocked">차단됨</option>
+                                <option value="noshow_blocked">노쇼/차단</option>
                             </select>
                         </div>
                         <div class="col-md-4">
@@ -128,8 +129,8 @@
                             {% for r in reservations %}
                             <tr class="reservation-row" data-date="{{ r.start_time.strftime('%Y-%m-%d') }}"
                                 data-name="{{ r.name }}" data-phone="{{ r.phone }}"
-                                data-status="{% if r.phone in blocked_phones %}blocked{% else %}{{ r.status }}{% endif %}"
-                                data-search="{{ r.name }} {{ r.phone }} {% if r.status == 'reserved' %}예약중 예약됨{% elif r.status == 'checked_in' %}체크인 이용중 입실완료{% elif r.status == 'ended' %}종료 이용완료{% elif r.status == 'cancelled' %}취소 취소됨{% elif r.status == 'noshow_penalty' %}노쇼{% endif %} {% if r.phone in blocked_phones %}차단 차단됨{% endif %}">
+                                data-status="{% if r.status == 'noshow_penalty' or r.phone in blocked_phones %}noshow_blocked{% else %}{{ r.status }}{% endif %}"
+                                data-search="{{ r.name }} {{ r.phone }} {% if r.status == 'reserved' %}예약중 예약됨{% elif r.status == 'checked_in' %}체크인 이용중 입실완료{% elif r.status == 'ended' %}종료 이용완료{% elif r.status == 'cancelled' %}취소 취소됨{% elif r.status == 'noshow_penalty' %}노쇼 차단{% endif %} {% if r.phone in blocked_phones %}노쇼 차단 차단됨{% endif %}">
                                 <td>
                                     {% if r.status == 'reserved' %}<span class="badge bg-primary">예약중</span>
                                     {% elif r.status == 'checked_in' %}<span class="badge bg-success">체크인</span>
@@ -611,6 +612,49 @@
                                 <input type="email" class="form-control" id="officialEmail"
                                     placeholder="official@gov.kr" value="{{ settings.official_email or '' }}">
                                 <div class="form-text">이 주소로 신청서 PDF가 자동 발송됩니다.</div>
+                                
+                                <hr>
+                                <label class="form-label fw-bold text-primary"><i class="fas fa-clock me-1"></i>자동 메일 전송 설정</label>
+                                <div class="row g-2 mb-2">
+                                    <div class="col-md-6">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="autoMailWeekly"
+                                                {{ 'checked' if settings.auto_mail_weekly == 'true' else '' }}>
+                                            <label class="form-check-label" for="autoMailWeekly">
+                                                매주 월요일 오전 9시 자동 발송 (주간)
+                                            </label>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox" id="autoMailMonthly"
+                                                {{ 'checked' if settings.auto_mail_monthly == 'true' else '' }}>
+                                            <label class="form-check-label" for="autoMailMonthly">
+                                                매월 1일 오전 9시 자동 발송 (월간)
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="mb-2">
+                                    <label class="form-label small fw-bold">자동 발송 파일 형식</label>
+                                    <div class="d-flex gap-3">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="autoMailFormat" id="autoFormatMerged" value="merged"
+                                                {{ 'checked' if settings.auto_mail_format != 'zip' else '' }}>
+                                            <label class="form-check-label" for="autoFormatMerged">
+                                                <i class="fas fa-file-pdf text-danger me-1"></i>하나의 PDF로 병합
+                                            </label>
+                                        </div>
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="radio" name="autoMailFormat" id="autoFormatZip" value="zip"
+                                                {{ 'checked' if settings.auto_mail_format == 'zip' else '' }}>
+                                            <label class="form-check-label" for="autoFormatZip">
+                                                <i class="fas fa-file-archive text-warning me-1"></i>개별 PDF (ZIP)
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                                <div class="form-text">활성화 시 담당자 이메일로 해당 기간의 신청서 모음이 자동 발송됩니다.</div>
                             </div>
                         </div>
 
@@ -620,6 +664,44 @@
                             </button>
                         </div>
                     </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Bulk Report Options Modal -->
+    <div class="modal fade" id="bulkReportModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-file-pdf me-2"></i>신청서 모음 전송</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <p id="bulkReportDesc" class="text-muted mb-3"></p>
+                    <label class="form-label fw-bold">파일 형식 선택</label>
+                    <div class="d-flex gap-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="bulkFormat" id="formatMerged" value="merged" checked>
+                            <label class="form-check-label" for="formatMerged">
+                                <i class="fas fa-file-pdf text-danger me-1"></i>하나의 PDF로 병합
+                                <div class="text-muted small">파일 크기 작음, 연속 열람</div>
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="bulkFormat" id="formatZip" value="zip">
+                            <label class="form-check-label" for="formatZip">
+                                <i class="fas fa-file-archive text-warning me-1"></i>개별 PDF (ZIP)
+                                <div class="text-muted small">개별 관리/인쇄 편리</div>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
+                    <button type="button" class="btn btn-primary" onclick="sendBulkReportWithOptions()">
+                        <i class="fas fa-paper-plane me-1"></i>전송
+                    </button>
                 </div>
             </div>
         </div>
@@ -1340,24 +1422,75 @@
             .catch(err => showAlert('서버 통신 오류'));
     }
 
-    function sendBulkReport(period) {
-        const map = { 'week': '주간', 'half': '보름', 'month': '월간' };
-        if (!confirm(`${map[period]} 신청서 모음을 생성하여\n담당자 이메일로 전송하시겠습니까?`)) return;
+    let selectedBulkPeriod = null;
+    
+    function showBulkReportModal(period) {
+        selectedBulkPeriod = period;
+        const map = { 'week': '지난 1주 (주간)', 'half': '지난 15일 (보름)', 'month': '지난 30일 (월간)', 'custom': '현재 검색 결과' };
+        
+        if (period === 'custom') {
+            const date = document.getElementById('filterDate').value;
+            const status = document.getElementById('filterStatus').value;
+            const q = document.getElementById('filterSearch').value;
+            
+            if (!date && !status && !q) {
+                showAlert('날짜, 상태, 또는 검색어를 먼저 입력해주세요.');
+                return;
+            }
+            
+            let filterDesc = [];
+            if (date) filterDesc.push(`날짜: ${date}`);
+            if (status) filterDesc.push(`상태: ${status}`);
+            if (q) filterDesc.push(`검색: ${q}`);
+            document.getElementById('bulkReportDesc').innerHTML = `<strong>${map[period]}</strong><br>${filterDesc.join('<br>')}`;
+        } else {
+            document.getElementById('bulkReportDesc').innerHTML = `<strong>${map[period]}</strong> 신청서를 담당자 이메일로 전송합니다.`;
+        }
+        
+        const modal = new bootstrap.Modal(document.getElementById('bulkReportModal'));
+        modal.show();
+    }
+    
+    function sendBulkReportWithOptions() {
+        const format = document.querySelector('input[name="bulkFormat"]:checked').value;
+        const period = selectedBulkPeriod;
+        
+        // Close modal
+        bootstrap.Modal.getInstance(document.getElementById('bulkReportModal')).hide();
+        
+        showProgress('📋 예약 데이터 조회 중...');
+        
+        // Simulate progress updates
+        setTimeout(() => updateProgress('📄 PDF 생성 중...'), 1500);
+        setTimeout(() => updateProgress(format === 'zip' ? '📦 ZIP 압축 중...' : '📄 PDF 병합 중...'), 3000);
+        setTimeout(() => updateProgress('📧 메일 전송 중...'), 5000);
+
+        let body = { period: period, format: format };
+        
+        if (period === 'custom') {
+            body.date = document.getElementById('filterDate').value;
+            body.status = document.getElementById('filterStatus').value;
+            body.q = document.getElementById('filterSearch').value;
+        }
 
         fetch('/admin/stats/report', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ period: period })
+            body: JSON.stringify(body)
         })
             .then(res => res.json())
             .then(data => {
+                hideProgress();
                 if (data.success) {
                     showAlert(`총 ${data.count}건의 신청서가 전송되었습니다.`);
                 } else {
                     showAlert('전송 실패: ' + data.error);
                 }
             })
-            .catch(err => showAlert('서버 통신 오류'));
+            .catch(err => {
+                hideProgress();
+                showAlert('서버 통신 오류');
+            });
     }
 
     // --- Generic Settings Save ---
@@ -1490,7 +1623,10 @@
                     'smtp_password': document.getElementById('smtpPassword').value,
                     'smtp_host': document.getElementById('smtpHost').value,
                     'smtp_port': document.getElementById('smtpPort').value,
-                    'official_email': document.getElementById('officialEmail').value
+                    'official_email': document.getElementById('officialEmail').value,
+                    'auto_mail_weekly': document.getElementById('autoMailWeekly').checked ? 'true' : 'false',
+                    'auto_mail_monthly': document.getElementById('autoMailMonthly').checked ? 'true' : 'false',
+                    'auto_mail_format': document.querySelector('input[name="autoMailFormat"]:checked').value
                 };
                 saveGenericSettings(settings, '이메일 설정이 저장되었습니다.');
             });
@@ -1668,5 +1804,23 @@
             });
         }
     });
+
+    // Global Function for Excel Download
+    function downloadExcelWithFilters() {
+        const date = document.getElementById('filterDate').value;
+        const status = document.getElementById('filterStatus').value;
+        const q = document.getElementById('filterSearch').value;
+
+        const params = new URLSearchParams();
+        if (date) params.append('date', date);
+        if (status) params.append('status', status);
+        if (q) params.append('q', q);
+
+        const queryString = params.toString();
+        const url = `/admin/download_excel` + (queryString ? `?${queryString}` : '');
+
+        console.log('[DEBUG] Excel Download URL:', url); // 디버그용
+        window.location.href = url;
+    }
 </script>
 {% endblock %}

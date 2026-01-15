@@ -186,11 +186,15 @@
                             {% for log in access_logs %}
                             <tr>
                                 <td class="text-nowrap">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                                <td><span class="badge bg-secondary">{{ log.method }}</span></td>
+                                <td><span class="badge bg-secondary">{{ log.method | translate_method }}</span></td>
                                 <td class="text-primary">{{ log.path }}</td>
-                                <td>{{ log.ip_address }}</td>
+                                <td>
+                                    {{ log.ip_address }}
+                                    <span class="badge bg-light text-dark border ms-1">{{ log.user_agent | detect_device
+                                        }}</span>
+                                </td>
                                 <td class="text-truncate" style="max-width: 300px;" title="{{ log.user_agent }}">
-                                    {{ log.user_agent }}
+                                    {{ log.user_agent | simplify_ua }}
                                 </td>
                             </tr>
                             {% endfor %}

@@ -144,20 +144,11 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body p-4">
-                <p class="mb-3">다음 사용자를 위해 깔끔하게 정리하셨나요?<br>정리된 공간 사진을 찍어 올려주세요.</p>
+                <p class="mb-3 text-center fs-5">다음 사용자를 위해 자리를 정돈하셨나요?<br>퇴실 처리를 진행합니다.</p>
 
-                <div class="mb-4 text-center">
-                    <label for="cleanPhoto" class="btn btn-outline-success w-100 p-4 border-2 border-dashed"
-                        style="border-style: dashed;">
-                        <i class="fas fa-camera fa-2x mb-2"></i><br>
-                        <span id="fileName">사진 촬영 또는 선택</span>
-                    </label>
-                    <input type="file" id="cleanPhoto" class="d-none" accept="image/*" capture="environment">
-                </div>
-
-                <div class="d-grid">
+                <div class="d-grid mt-4">
                     <button type="button" class="btn btn-success btn-lg" id="btnConfirmCheckout">
-                        인증하고 퇴실하기
+                        네, 정리했습니다 (퇴실)
                     </button>
                 </div>
             </div>
@@ -285,24 +276,15 @@
     }
 
     document.getElementById('btnConfirmCheckout').addEventListener('click', function () {
-        const file = photoInput.files[0];
-        if (!file) {
-            showAlert('청소 인증 사진을 업로드해주세요.');
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('photo', file);
-        formData.append('phone', checkoutPhone);
-
-        // Loading state
+        // User Request: Remove photo upload requirement, just confirm
         const btn = this;
         btn.disabled = true;
-        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>업로드 중...';
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>처리 중...';
 
         fetch('/api/checkout', {
             method: 'POST',
-            body: formData
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ phone: checkoutPhone })
         })
             .then(res => res.json())
             .then(data => {

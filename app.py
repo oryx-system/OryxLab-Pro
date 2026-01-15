@@ -7,18 +7,35 @@ import io
 from ics import Calendar, Event
 import shutil
 from dotenv import load_dotenv
-from PIL import Image, ImageDraw, ImageFont # Added for QR Poster
-import requests # Added for Telegram Notifications
-from reportlab.pdfgen import canvas
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from reportlab.lib.pagesizes import A4
-from reportlab.lib.units import mm
-from reportlab.lib.utils import ImageReader 
-from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as PlatypusImage
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+
+# Safe Imports for Dependencies that might be missing in old Docker Images
+try:
+    from PIL import Image, ImageDraw, ImageFont # Added for QR Poster
+except ImportError:
+    Image = None
+    print("Warning: PIL (Pillow) not found. QR features will fail.")
+
+try:
+    import requests # Added for Telegram Notifications
+except ImportError:
+    requests = None
+    print("Warning: requests not found. Telegram notifications will fail.")
+
+try:
+    from reportlab.pdfgen import canvas
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.units import mm
+    from reportlab.lib.utils import ImageReader 
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, Image as PlatypusImage
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+    reportlab_available = True
+except ImportError:
+    reportlab_available = False
+    print("Warning: reportlab not found. PDF features will fail.")
 
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -28,12 +45,21 @@ import base64
 import binascii
 from werkzeug.security import generate_password_hash, check_password_hash
 
+try:
+    import arrow
+except ImportError:
+    arrow = None
+    print("Warning: arrow not found. ICS timezone handling will degrade.")
+
 load_dotenv()
 
 app = Flask(__name__)
 # Fix for Synology Reverse Proxy (HTTPS -> HTTP)
-from werkzeug.middleware.proxy_fix import ProxyFix
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+try:
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+except ImportError:
+    print("Warning: ProxyFix not available. HTTPS headers may not work correctly.")
 
 app.config['SECRET_KEY'] = 'dev-secret-key-change-this-in-prod'
 
@@ -59,8 +85,67 @@ def auto_logout_if_leaving_admin():
             session.pop('is_admin', None)
             session.pop('is_dev', None)
 
+# --- Jinja Filters for Developer Console --- #
+@app.template_filter('translate_method')
+def translate_method_filter(method):
+    mapping = {
+        'GET': '조회',
+        'POST': '전송',
+        'PUT': '수정',
+        'DELETE': '삭제',
+        'HEAD': '헤더',
+        'OPTIONS': '옵션'
+    }
+    return mapping.get(method, method)
+
+@app.template_filter('detect_device')
+def detect_device_filter(user_agent):
+    if not user_agent:
+        return 'Unknown'
+    ua = user_agent.lower()
+    if 'mobile' in ua or 'android' in ua or 'iphone' in ua or 'ipad' in ua:
+        return 'Mobile'
+    return 'PC'
+
+@app.template_filter('simplify_ua')
+def simplify_ua_filter(user_agent):
+    if not user_agent:
+        return '-'
+    
+    ua = user_agent.lower()
+    browser = 'Other'
+    os_name = 'Other'
+    
+    # Browser
+    if 'chrome' in ua and 'edge' not in ua:
+        browser = 'Chrome'
+    elif 'safari' in ua and 'chrome' not in ua:
+        browser = 'Safari'
+    elif 'firefox' in ua:
+        browser = 'Firefox'
+    elif 'edge' in ua or 'edg' in ua:
+        browser = 'Edge'
+    elif 'whale' in ua:
+        browser = 'Whale'
+    elif 'samsungbrowser' in ua:
+        browser = 'Samsung'
+        
+    # OS
+    if 'windows' in ua:
+        os_name = 'Windows'
+    elif 'mac os' in ua:
+        os_name = 'macOS'
+    elif 'android' in ua:
+        os_name = 'Android'
+    elif 'iphone' in ua or 'ipad' in ua:
+        os_name = 'iOS'
+    elif 'linux' in ua:
+        os_name = 'Linux'
+        
+    return f"{browser} ({os_name})"
+
 @app.before_request
-def maintenance_check():
+def make_session_permanent():
     # Maintenance Mode Check
     if get_setting('maintenance_mode') == 'true':
         # Allow static files and admin/dev login, and DEV APIs
@@ -702,11 +787,15 @@ def download_ics(id):
     c = Calendar()
     e = Event()
     e.name = f"지혜마루 예약 ({res.name})"
-    # Use Arrow with KST timezone
-    import arrow
-    kst = 'Asia/Seoul'
-    e.begin = arrow.get(res.start_time, kst)
-    e.end = arrow.get(res.end_time, kst)
+    # Use Arrow with KST timezone (uses globally safe-imported arrow)
+    if arrow:
+        kst = 'Asia/Seoul'
+        e.begin = arrow.get(res.start_time, kst)
+        e.end = arrow.get(res.end_time, kst)
+    else:
+        # Fallback: use datetime directly (may have timezone issues)
+        e.begin = res.start_time
+        e.end = res.end_time
     e.location = "지혜마루 작은 도서관"
     c.events.add(e)
     
@@ -823,11 +912,8 @@ def modify_reservation(id):
         start_time=new_start_dt,
         end_time=new_end_dt,
         status='reserved',
-        signature_blob=res.signature_blob,
-        applicant_type=res.applicant_type,
-        org_name=res.org_name,
-        facility_basic=res.facility_basic,
-        facility_extra=res.facility_extra,
+        facility_basic=(res.facility_basic or ''),
+        facility_extra=(res.facility_extra or ''),
         expected_count=res.expected_count,
         birth_date=res.birth_date,
         address=res.address,
@@ -905,15 +991,10 @@ def checkin_process():
 
 @app.route('/api/checkout', methods=['POST'])
 def checkout_process():
-    if 'photo' not in request.files:
-        return jsonify({'error': '청소 사진을 업로드해주세요.'}), 400
+    # User Request: Remove photo upload function
+    data = request.json or request.form
+    phone = data.get('phone')
     
-    file = request.files['photo']
-    phone = request.form.get('phone')
-    
-    if file.filename == '':
-        return jsonify({'error': '파일이 선택되지 않았습니다.'}), 400
-        
     if not phone:
         return jsonify({'error': '식별 정보(전화번호)가 누락되었습니다.'}), 400
 
@@ -933,16 +1014,7 @@ def checkout_process():
     if not target_res:
         return jsonify({'error': '퇴실 가능한 예약이 없습니다.'}), 404
 
-    # Save File
-    filename = f"checkout_{target_res.id}_{datetime.now().strftime('%Y%m%d%H%M%S')}.jpg"
-    upload_folder = os.path.join(basedir, 'static', 'uploads')
-    if not os.path.exists(upload_folder):
-        os.makedirs(upload_folder)
-        
-    filepath = os.path.join(upload_folder, filename)
-    file.save(filepath)
-
-    target_res.checkout_photo = filename
+    # No Photo Upload
     target_res.status = 'ended'
     db.session.commit()
 
@@ -1046,11 +1118,15 @@ def _draw_border(canvas, doc):
     canvas.restoreState()
 
 def _generate_pdf_buffer(res):
-    # 1. Register Font - with proper Linux/Docker fallback
+    """
+    PDF 생성 - 원본 종이 양식과 100% 동일하게 출력
+    원본 양식: 양식.jpg 기준으로 정확히 복제
+    """
+    # 1. Register Font
     font_path = "C:/Windows/Fonts/malgun.ttf"
     bold_path = "C:/Windows/Fonts/malgunbd.ttf"
+    batang_path = "C:/Windows/Fonts/batang.ttc"
     
-    # Linux/Docker fallback
     if not os.path.exists(font_path):
         linux_font = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
         linux_bold = "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf"
@@ -1067,166 +1143,274 @@ def _generate_pdf_buffer(res):
             pdfmetrics.registerFont(TTFont('MalgunBd', bold_path))
         else:
             pdfmetrics.registerFont(TTFont('MalgunBd', font_path))
+            
+        # Register Batang (Myeongjo)
+        if os.path.exists(batang_path):
+            try:
+                pdfmetrics.registerFont(TTFont('Batang', batang_path, subfontIndex=0))
+            except: pass
     except Exception as e:
         print(f"PDF Font Registration Error: {e}")
         pass
 
     buffer = io.BytesIO()
+    # A4 page (210mm x 297mm) - 중앙 배치
     doc = SimpleDocTemplate(buffer, pagesize=A4, 
                             leftMargin=20*mm, rightMargin=20*mm, 
-                            topMargin=20*mm, bottomMargin=8*mm)
+                            topMargin=15*mm, bottomMargin=15*mm)
     
     elements = []
     
-    # Styles matching original
-    styles = getSampleStyleSheet()
-    style_title = ParagraphStyle('Title', fontName='MalgunBd', fontSize=18, alignment=TA_CENTER)
-    style_cell = ParagraphStyle('Cell', fontName='Malgun', fontSize=9, alignment=TA_CENTER, leading=11)
-    style_cell_left = ParagraphStyle('CellLeft', fontName='Malgun', fontSize=9, alignment=TA_LEFT, leading=11)
-    style_cell_bold = ParagraphStyle('CellBold', fontName='MalgunBd', fontSize=9, alignment=TA_CENTER, leading=11)
-    style_footer = ParagraphStyle('Footer', fontName='Malgun', fontSize=11, alignment=TA_LEFT, leading=16)
-    style_date = ParagraphStyle('Date', fontName='Malgun', fontSize=10, alignment=TA_CENTER)
-    style_recipient = ParagraphStyle('Recipient', fontName='MalgunBd', fontSize=14, alignment=TA_CENTER)
+    # Fonts Check
+    reg_fonts = pdfmetrics.getRegisteredFontNames()
+    s_font = 'Batang' if 'Batang' in reg_fonts else 'Malgun'
+    
+    # Styles
+    # 제목 스타일 (테이블 내에서 쓰일 것이므로 ParagraphStyle로 정의하되, 정렬은 TableStyle에서 제어)
+    style_title = ParagraphStyle('Title', fontName='MalgunBd', fontSize=20, alignment=TA_CENTER, leading=24)
+    
+    style_cell = ParagraphStyle('Cell', fontName=s_font, fontSize=10, alignment=TA_CENTER, leading=13, wordWrap='CJK')
+    style_cell_left = ParagraphStyle('CellLeft', fontName=s_font, fontSize=10, alignment=TA_LEFT, leading=13, leftIndent=2*mm, wordWrap='CJK')
+    style_cell_bold = ParagraphStyle('CellBold', fontName=s_font, fontSize=10, alignment=TA_CENTER, leading=13, wordWrap='CJK')
+    
+    style_footer = ParagraphStyle('Footer', fontName=s_font, fontSize=11, alignment=TA_CENTER, leading=16)
+    style_date = ParagraphStyle('Date', fontName=s_font, fontSize=12, alignment=TA_CENTER, leading=14)
+    # User Request: Batang + Extra Bold (Simulated with Stroke)
+    style_recipient = ParagraphStyle('Recipient', fontName=s_font, fontSize=16, alignment=TA_CENTER, leading=20, textStrokeWidth=1, textStrokeColor=colors.black)
+    style_sig = ParagraphStyle('Sig', fontName=s_font, fontSize=11, alignment=TA_CENTER, leading=14)
+    style_sig_right = ParagraphStyle('SigRight', fontName=s_font, fontSize=11, alignment=TA_RIGHT, leading=14)
 
-    # Title
-    elements.append(Spacer(1, 3*mm))
-    elements.append(Paragraph("군북지혜마루작은도서관 시설 사용 허가 신청서", style_title))
-    elements.append(Spacer(1, 6*mm))
-
-    def P(text): return Paragraph(text, style_cell)
-    def PL(text): return Paragraph(text, style_cell_left)  # Left-aligned
-    def PB(text): return Paragraph(text, style_cell_bold)
+    def P(text): return Paragraph(str(text) if text else "", style_cell)
+    def PL(text): return Paragraph(str(text) if text else "", style_cell_left)
+    def PB(text): return Paragraph(str(text) if text else "", style_cell_bold)
 
     # Data Preparation
     p_str = res.phone
     if len(p_str) == 11 and p_str.startswith('010'):
-         p_str = f"{p_str[:3]}-{p_str[3:7]}-{p_str[7:]}"
-         
-    date_str_start = res.start_time.strftime('%Y년 %m월 %d일 %H시 부터')
-    date_str_end = res.end_time.strftime('%Y년 %m월 %d일 %H시 까지')
+        p_str = f"{p_str[:3]}-{p_str[3:7]}-{p_str[7:]}"
     
-    # Build facility strings with checkboxes
+    start_y = res.start_time.strftime('%Y')
+    start_m = res.start_time.strftime('%m')
+    start_d = res.start_time.strftime('%d')
+    start_h = res.start_time.strftime('%H')
+    end_y = res.end_time.strftime('%Y')
+    end_m = res.end_time.strftime('%m')
+    end_d = res.end_time.strftime('%d')
+    end_h = res.end_time.strftime('%H')
+    
+    date_line1 = f"{start_y}년 {start_m}월 {start_d}일 {start_h}시 부터"
+    date_line2 = f"{end_y}년 {end_m}월 {end_d}일 {end_h}시 까지"
+    
+    days_diff = (res.end_time.date() - res.start_time.date()).days
+    if days_diff == 0: days_diff = 1
+    
     facility_basic_list = (res.facility_basic or '').split(',') if res.facility_basic else []
     fb_display = ""
     for f in ['자료실', '문화강좌실', '조리실']:
-        if f in facility_basic_list:
-            fb_display += f"■ {f}   "
-        else:
-            fb_display += f"□ {f}   "
+        mark = "■" if f in facility_basic_list else "□"
+        # User Request: Spacing Reduced (1/2 of x3).
+        fb_display += f"{mark} {f}" + "&nbsp;"*5
     
     facility_extra_list = (res.facility_extra or '').split(',') if res.facility_extra else []
     fe_display = ""
     for f in ['빔프로젝트', '스크린']:
-        if f in facility_extra_list:
-            fe_display += f"■ {f}   "
-        else:
-            fe_display += f"□ {f}   "
+        mark = "■" if f in facility_extra_list else "□"
+        fe_display += f"{mark} {f}" + "&nbsp;"*5
     
-    # Expected count
     count_display = f"{res.expected_count} 명" if res.expected_count else "명"
-    
-    # Birth date / Address / Email
     birth_display = res.birth_date or ""
     addr_display = res.address or ""
     email_display = res.email or ""
 
-
-    # Display name based on applicant type
-    # 단체: 사용자명=단체명, 대표자=이름, 담당자=미기입
-    # 개인: 사용자명=이름, 대표자=미기입, 담당자=미기입
     if res.applicant_type == '단체' and res.org_name:
-        display_name = res.org_name  # 단체명
-        rep_name = res.name  # 대표자(성명)
-        manager_name = ""  # 담당자 미기입
+        display_name = res.org_name
+        rep_name = res.name
     else:
-        display_name = res.name  # 이름
-        rep_name = ""  # 대표자 미기입
-        manager_name = ""  # 담당자 미기입
+        display_name = res.name
+        rep_name = ""
 
-    data = [
+    # ===== [통합 테이블 구조] =====
+    # 제목 + 메인 테이블 + 하단 문구까지 모두 하나의 메인 테이블(Main Table)로 통합하여
+    # 엑셀 양식과 동일한 외곽선 및 레이아웃을 구현함.
+
+    # 1. 메인 데이터 준비
+    # 열 너비: [26, 24, 45, 24, 51] -> 합계 170mm (Rollback: 이메일 51mm 확보)
+    col_widths = [26*mm, 24*mm, 45*mm, 24*mm, 51*mm]
+    
+    # Row 0: 제목
+    title_row = [Paragraph("군북지혜마루작은도서관 시설 사용 허가 신청서", style_title), "", "", "", ""]
+    
+    # Rows 1~10: 본문
+    main_rows = [
         [PB("사용 목적 (회의, 행사 등)"), "", P(res.purpose), "", ""],
-        [PB("신청인<br/>(사용자 또는 단체)"), PB("사용자(단체)명"), P(display_name), PB("전화번호"), P(p_str)],
+        [PB("신청인<br/>(사용자 또는<br/>단체)"), PB("사용자(단체)명"), P(display_name), PB("전화번호"), P(p_str)],
         ["", PB("대표자(성명)"), P(rep_name), PB("사업자등록번호<br/>(생년월일)"), P(birth_display)],
         ["", PB("주소"), P(addr_display), "", ""],
-        ["", PB("담당자"), P(manager_name), PB("E-mail"), P(email_display)],
+        ["", PB("담당자"), P(""), PB("E-mail"), P(email_display)],
         [PB("사용시설"), PB("기본시설"), PL(fb_display), "", ""],
-        ["", PB("부대시설 및<br/>설비"), PL(fe_display), "", ""],
-        [PB("사용기간"), P(f"{date_str_start}<br/>{date_str_end}"), "", "", PB("(   일간)<br/>*횟수 1회")],
+        [PB(""), PB("부대시설 및<br/>설비"), PL(fe_display), "", ""],
+        [PB("사용기간"), P(f"{date_line1}<br/>{date_line2}"), "", "", PB(f"( {days_diff}일간 )<br/>*횟수 1회")],
         [PB("이용예정인원"), P(count_display), "", "", ""],
         [PB("사용료 등"), P("해당없음"), "", "", ""]
     ]
+
+    # --- Footer Rows (Inside Main Table) ---
     
-    # Row heights - push content down toward bottom
-    row_heights = [15*mm, 14*mm, 14*mm, 14*mm, 14*mm, 14*mm, 14*mm, 20*mm, 14*mm, 14*mm]
+    # 1. Declaration (Row 11)
+    footer_text1 = Paragraph("위와 같이 「금산군 작은도서관 설치 및 운영 조례」 제4조제4항에 따라<br/>작은도서관의 (    시설    ) 사용을 신청합니다.", style_footer)
+    row_decl = [footer_text1, "", "", "", ""]
     
-    t_style = TableStyle([
-        ('FONTNAME', (0,0), (-1,-1), 'Malgun'),
-        ('FONTSIZE', (0,0), (-1,-1), 9),
-        ('GRID', (0,0), (-1,-1), 0.5, colors.black),
-        ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('ALIGN', (0,0), (-1,-1), 'CENTER'),
-        ('ALIGN', (2,5), (2,5), 'LEFT'),  # 기본시설 체크박스 좌측정렬
-        ('ALIGN', (2,6), (2,6), 'LEFT'),  # 부대시설 체크박스 좌측정렬
-        ('SPAN', (0,0), (1,0)), ('SPAN', (2,0), (4,0)),
-        ('SPAN', (0,1), (0,4)), ('SPAN', (2,3), (4,3)),
-        ('SPAN', (0,5), (0,6)), ('SPAN', (2,5), (4,5)), ('SPAN', (2,6), (4,6)),
-        ('SPAN', (1,7), (3,7)), ('SPAN', (1,8), (4,8)), ('SPAN', (1,9), (4,9)),
-    ])
+    # 2. Date (Row 12)
+    # Using current date or reservation start date? Usually application date = today.
+    d_y = datetime.now().strftime('%Y')
+    d_m = datetime.now().strftime('%m')
+    d_d = datetime.now().strftime('%d')
+    date_str = f"{d_y} 년    {d_m} 월    {d_d} 일"
+    date_text = Paragraph(date_str, style_date)
+    row_date = [date_text, "", "", "", ""]
+
+    # 3. Signature Section (Row 13)
+    # 서명 이미지 준비
     
-    t = Table(data, colWidths=[28*mm, 28*mm, 42*mm, 28*mm, 44*mm], rowHeights=row_heights)
-    t.setStyle(t_style)
-    elements.append(t)
-    elements.append(Spacer(1, 8*mm))
-    
-    elements.append(Paragraph("위와 같이 「금산군 작은도서관 설치 및 운영 조례」 제4조제4항에 따라", style_footer))
-    elements.append(Paragraph("작은도서관의 (   시설   ) 사용을 신청합니다.", style_footer))
-    elements.append(Spacer(1, 12*mm))
-    elements.append(Paragraph(datetime.now().strftime('%Y 년   %m 월   %d 일'), style_date))
-    elements.append(Spacer(1, 10*mm))
-    
-    # Signature
+    sig_cell_content = []
     sig_img_flowable = None
+    
+    # 텍스트는 항상 표시 (User Request: "글자는 안보여 잘 넣어봐")
+    # User Request: Text size 70% reduced.
+    text_p = Paragraph('<font size="8">(서명 또는 날인)</font>', style_sig)
+    
     if res.signature_blob:
         try:
             img_io = io.BytesIO(res.signature_blob)
-            sig_img_flowable = PlatypusImage(img_io, width=35*mm, height=18*mm)
-        except:
-            pass
+            # Width/Height tuned: Significantly larger (40mm)
+            sig_img_flowable = PlatypusImage(img_io, width=40*mm, height=15*mm)
+        except Exception as e:
+            print(f"Signature Blob Error: {e}")
     elif res.signature_path:
         sig_full_path = os.path.join(instance_path, 'signatures', res.signature_path)
         if os.path.exists(sig_full_path):
-             sig_img_flowable = PlatypusImage(sig_full_path, width=35*mm, height=18*mm)
-             
-    sig_cell = Paragraph("(서명 또는 날인)", style_cell)
-    if sig_img_flowable:
-        sig_cell = [sig_img_flowable, Paragraph("(서명 또는 날인)", style_cell)]
+            try:
+                sig_img_flowable = PlatypusImage(sig_full_path, width=40*mm, height=15*mm)
+            except Exception as e:
+                print(f"Signature File Error: {e}")
     
-    sig_data = [
-        ["신청인(단체명)", res.name, sig_cell],
-        ["성 명(대표자)", res.name, ""]
+    if sig_img_flowable:
+        # 이미지가 있으면 이미지 위에, 텍스트 아래에 (Stacking)
+        sig_cell_content = [sig_img_flowable, text_p]
+    else:
+        sig_cell_content = [text_p]
+    
+    # 서명란: 우측 정렬된 "신청인 XXX (서명)" 형태를 구현하기 위해 Nested Table 사용
+    # 전체 170mm 중 우측에 쏠리게 배치
+    # [Label(60), Name(40), Sig(50)] = 150mm inside the merged cell
+    
+    sig_nested_data = [
+        [Paragraph("신청인(단체명)", style_sig_right), Paragraph(display_name, style_sig), sig_cell_content],
+        [Paragraph("성  명(대표자)", style_sig_right), Paragraph(res.name, style_sig), ""]
     ]
     
-    sig_table = Table(sig_data, colWidths=[35*mm, 35*mm, 35*mm], rowHeights=[10*mm, 10*mm])
-    sig_table.setStyle(TableStyle([
-        ('FONTNAME', (0,0), (-1,-1), 'Malgun'),
-        ('FONTSIZE', (0,0), (-1,-1), 9),
-        ('ALIGN', (0,0), (0,1), 'LEFT'), 
-        ('ALIGN', (1,0), (1,1), 'CENTER'),
-        ('ALIGN', (2,0), (2,1), 'RIGHT'),
+    # Parent Row Height is 21mm. Nested [9, 12].
+    # Reverting to tight spacing (21mm total). Sig image (15mm) fits in SPANNED cell (21mm).
+    sig_nested_table = Table(sig_nested_data, colWidths=[60*mm, 40*mm, 50*mm], rowHeights=[9*mm, 12*mm])
+    sig_nested_table.setStyle(TableStyle([
+        ('SPAN', (2,0), (2,1)), # Span Sig Image across both rows
         ('VALIGN', (0,0), (-1,-1), 'MIDDLE'),
-        ('SPAN', (2,0), (2,1))
+        ('ALIGN', (0,0), (0,1), 'RIGHT'),  # 라벨 우측 정렬
+        ('ALIGN', (1,0), (1,1), 'CENTER'), # 이름 중앙 정렬
+        ('ALIGN', (2,0), (2,1), 'CENTER'), # 서명 중앙 정렬 (이미지/텍스트 위치)
+        ('VALIGN', (2,0), (2,1), 'MIDDLE'),
     ]))
-    sig_table.hAlign = 'RIGHT'
-    elements.append(sig_table)
-    elements.append(Spacer(1, 15*mm))
     
-    elements.append(Paragraph("금산다락원장  귀하", style_recipient))
+    row_sig = [sig_nested_table, "", "", "", ""]
+    
+    # 4. Recipient (Row 14)
+    # User Request: Batang + Bold tag
+    recipient_text = Paragraph("<b>금산다락원장  귀하</b>", style_recipient)
+    row_recipient = [recipient_text, "", "", "", ""]
+    
+    # 전체 데이터 합치기
+    full_data = [title_row] + main_rows + [row_decl, row_date, row_sig, row_recipient]
+    
+    # 행 높이 설정 (User Request: Footer -30%, Body +30% redistributed)
+    # Title: 25mm (Fixed)
+    # Footer Original: [20, 15, 30, 25] = 90mm -> New (70%): [14, 10, 21, 18] = 63mm (-27mm)
+    # Body Original: [12, 15, 12, 12, 12, 12, 12, 18, 12, 12] = 129mm
+    # Body Target: 129 + 27 = 156mm.
+    # Distributed approx +2~3mm per row:
+    # New Body: [15, 18, 15, 15, 15, 15, 15, 20, 14, 14]
+    
+    full_row_heights = [25*mm] + \
+                       [15*mm, 18*mm, 15*mm, 15*mm, 15*mm, 15*mm, 15*mm, 20*mm, 14*mm, 14*mm] + \
+                       [14*mm, 10*mm, 21*mm, 18*mm]
+    
+    main_table = Table(full_data, colWidths=col_widths, rowHeights=full_row_heights)
+    
+    # 스타일 정의
+    t_style_cmds = [
+        ('FONTNAME', (0,0), (-1,-1), s_font),
+        ('FONTSIZE', (0,0), (-1,-1), 10),
+        
+        # 1. 메인 테이블 전체 외곽선 (Footer 포함)
+        ('BOX', (0,0), (-1,-1), 0.4, colors.black),
+        
+        # 2. 제목 행 (Row 0)
+        ('SPAN', (0,0), (-1,0)),
+        ('VALIGN', (0,0), (-1,0), 'MIDDLE'),
+        ('ALIGN', (0,0), (-1,0), 'CENTER'),
+        ('LINEBELOW', (0,0), (-1,0), 0.4, colors.black),
+        
+        # 3. 본문 그리드 (Rows 1~10)
+        ('INNERGRID', (0,1), (-1,10), 0.4, colors.black),
+        ('LINEBELOW', (0,10), (-1,10), 0.4, colors.black), # 본문 끝 선
+        
+        ('VALIGN', (0,1), (-1,10), 'MIDDLE'),
+        ('ALIGN', (0,1), (-1,10), 'CENTER'),
+        ('ALIGN', (2,6), (2,7), 'LEFT'), # 시설 체크박스 좌측 정렬
+        
+        # 본문 셀 병합
+        ('SPAN', (0,1), (1,1)), ('SPAN', (2,1), (4,1)), # 사용목적
+        ('SPAN', (0,2), (0,5)), # 신청인(라벨)
+        ('SPAN', (2,4), (4,4)), # 주소
+        ('SPAN', (0,6), (0,7)), # 사용시설(라벨)
+        ('SPAN', (2,6), (4,6)), ('SPAN', (2,7), (4,7)), # 체크박스들
+        ('SPAN', (1,8), (3,8)), # 사용기간
+        ('SPAN', (1,9), (4,9)), # 인원
+        ('SPAN', (1,10), (4,10)), # 사용료
+        
+        # 4. Footer Rows 스타일링
+        # Declaration (Row 11)
+        ('SPAN', (0,11), (-1,11)),
+        ('VALIGN', (0,11), (-1,11), 'MIDDLE'),
+        ('ALIGN', (0,11), (-1,11), 'CENTER'),
+        
+        # Date (Row 12)
+        ('SPAN', (0,12), (-1,12)),
+        ('VALIGN', (0,12), (-1,12), 'MIDDLE'),
+        ('ALIGN', (0,12), (-1,12), 'CENTER'),
+        
+        # Signature (Row 13)
+        ('SPAN', (0,13), (-1,13)),
+        ('VALIGN', (0,13), (-1,13), 'MIDDLE'),
+        ('ALIGN', (0,13), (-1,13), 'CENTER'), # Nested Table Center Align (Updated)
+        
+        # Recipient (Row 14)
+        ('SPAN', (0,14), (-1,14)),
+        ('VALIGN', (0,14), (-1,14), 'BOTTOM'),
+        ('ALIGN', (0,14), (-1,14), 'CENTER'),
+        ('BOTTOMPADDING', (0,14), (-1,14), 2*mm), # 귀하 텍스트 여백 
+    ]
+    
+    main_table.setStyle(TableStyle(t_style_cmds))
+    elements.append(main_table)
 
-    doc.build(elements, onFirstPage=_draw_border, onLaterPages=_draw_border)
+    doc.build(elements)
     buffer.seek(0)
     return buffer
 
 def _send_email_with_pdf(to_email, subject, body, pdf_buffer, filename):
+    return _send_email_with_attachment(to_email, subject, body, pdf_buffer, filename, 'application/pdf')
+
+def _send_email_with_attachment(to_email, subject, body, file_buffer, filename, mimetype='application/octet-stream'):
     smtp_host = get_setting('smtp_host')
     smtp_port = get_setting('smtp_port') or 587
     smtp_email = get_setting('smtp_email')
@@ -1242,8 +1426,8 @@ def _send_email_with_pdf(to_email, subject, body, pdf_buffer, filename):
         msg['Subject'] = subject
         msg.attach(MIMEText(body, 'plain'))
         
-        pdf_buffer.seek(0)
-        part = MIMEApplication(pdf_buffer.read(), Name=filename)
+        file_buffer.seek(0)
+        part = MIMEApplication(file_buffer.read(), Name=filename)
         part['Content-Disposition'] = f'attachment; filename="{filename}"'
         msg.attach(part)
         
@@ -1317,7 +1501,7 @@ def send_bulk_report():
     if not session.get('is_admin'):
         return jsonify({'error': 'Unauthorized'}), 401
         
-    period = request.json.get('period', 'week') # week, half, month
+    period = request.json.get('period', 'week') # week, half, month, custom
     official_email = get_setting('official_email')
     
     if not official_email:
@@ -1325,69 +1509,129 @@ def send_bulk_report():
         
     # Date Calculation
     today = datetime.now()
-    if period == 'week':
-        # Last 7 days
+    query = Reservation.query
+    
+    if period == 'custom':
+        # Custom filter from frontend
+        filter_date = request.json.get('date')
+        filter_status = request.json.get('status')
+        search_q = request.json.get('q')
+        title_suffix = "검색결과"
+        
+        # Date filter
+        if filter_date:
+            try:
+                if ' to ' in filter_date or ' ~ ' in filter_date:
+                    separator = ' ~ ' if ' ~ ' in filter_date else ' to '
+                    start_str, end_str = filter_date.split(separator)
+                    start_date = datetime.strptime(start_str.strip(), '%Y-%m-%d')
+                    end_date = datetime.strptime(end_str.strip(), '%Y-%m-%d') + timedelta(days=1)
+                    query = query.filter(Reservation.start_time >= start_date, Reservation.start_time < end_date)
+                else:
+                    target_date = datetime.strptime(filter_date.strip(), '%Y-%m-%d')
+                    next_date = target_date + timedelta(days=1)
+                    query = query.filter(Reservation.start_time >= target_date, Reservation.start_time < next_date)
+            except ValueError:
+                pass
+        
+        # Status filter
+        if filter_status:
+            query = query.filter(Reservation.status == filter_status)
+        
+        # Search filter
+        if search_q:
+            import re
+            name_phone_match = re.match(r'^(.+?)\s*\(([0-9\-]+)\)$', search_q.strip())
+            if name_phone_match:
+                search_name = f"%{name_phone_match.group(1).strip()}%"
+                search_phone = f"%{name_phone_match.group(2).strip()}%"
+            else:
+                search_name = f"%{search_q}%"
+                search_phone = f"%{search_q}%"
+            query = query.filter(db.or_(
+                Reservation.name.like(search_name),
+                Reservation.phone.like(search_phone)
+            ))
+    elif period == 'week':
         start_date = today - timedelta(days=7)
         title_suffix = "주간"
+        query = query.filter(Reservation.start_time >= start_date)
     elif period == 'half':
-        # Last 15 days
         start_date = today - timedelta(days=15)
         title_suffix = "보름"
+        query = query.filter(Reservation.start_time >= start_date)
     elif period == 'month':
         start_date = today - timedelta(days=30)
         title_suffix = "월간"
+        query = query.filter(Reservation.start_time >= start_date)
     else:
         return jsonify({'error': 'Invalid period'}), 400
         
-    # Fetch Reservations
-    reservations = Reservation.query.filter(
-        Reservation.start_time >= start_date,
+    # Fetch Reservations (valid statuses only)
+    reservations = query.filter(
         Reservation.status.in_(['reserved', 'checked_in', 'ended'])
     ).order_by(Reservation.start_time).all()
     
     if not reservations:
         return jsonify({'error': '해당 기간에 예약이 없습니다.'}), 404
-        
-    # Generate Merged PDF
-    font_path = "C:/Windows/Fonts/malgun.ttf"
     
-    # Check for Linux/Docker Path (NanumGothic)
-    if not os.path.exists(font_path):
-        linux_font = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
-        if os.path.exists(linux_font):
-            font_path = linux_font
-        else:
-            return jsonify({'error': '폰트 없음'}), 500
-         
-    try:
-        pdfmetrics.registerFont(TTFont('Malgun', font_path))
-    except:
-        pass
-        
-    buffer = io.BytesIO()
-    c = canvas.Canvas(buffer, pagesize=A4)
-    width, height = A4
+    # Get format option (merged PDF or individual ZIP)
+    file_format = request.json.get('format', 'merged')
     
-    for res in reservations:
-        _draw_application_form(c, res, width, height)
-        c.showPage() # New Page
+    # Determine period string for email body
+    if period == 'custom':
+        filter_date = request.json.get('date', '')
+        period_str = filter_date if filter_date else '검색 조건'
+    else:
+        period_str = f"{start_date.strftime('%Y-%m-%d')} ~ {today.strftime('%Y-%m-%d')}"
+    
+    if file_format == 'zip':
+        # Generate individual PDFs and ZIP them
+        import zipfile
         
-    c.save()
-    buffer.seek(0)
+        zip_buffer = io.BytesIO()
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for idx, res in enumerate(reservations, 1):
+                pdf_buffer = _generate_pdf_buffer(res)
+                if pdf_buffer:
+                    pdf_name = f"{idx:03d}_{res.name}_{res.start_time.strftime('%Y%m%d')}.pdf"
+                    zf.writestr(pdf_name, pdf_buffer.read())
+        
+        zip_buffer.seek(0)
+        buffer = zip_buffer
+        filename = f"지혜마루_{title_suffix}_예약모음_{today.strftime('%Y%m%d')}.zip"
+        mimetype = 'application/zip'
+    else:
+        # Generate Merged PDF using PyPDF2
+        from PyPDF2 import PdfMerger
+        
+        merger = PdfMerger()
+        
+        for res in reservations:
+            pdf_buffer = _generate_pdf_buffer(res)
+            if pdf_buffer:
+                merger.append(pdf_buffer)
+        
+        buffer = io.BytesIO()
+        merger.write(buffer)
+        merger.close()
+        buffer.seek(0)
+        filename = f"지혜마루_{title_suffix}_예약모음_{today.strftime('%Y%m%d')}.pdf"
+        mimetype = 'application/pdf'
     
     # Send Email
     subject = f"[지혜마루] 시설 사용 신청서 모음 ({title_suffix})"
+    
     body = f"""안녕하세요.
 지혜마루 작은도서관입니다.
 
 {title_suffix} 시설 사용 신청서 모음을 송부드립니다.
-기간: {start_date.strftime('%Y-%m-%d')} ~ {today.strftime('%Y-%m-%d')}
+기간: {period_str}
 총 건수: {len(reservations)}건
 
 감사합니다."""
-    filename = f"지혜마루_{title_suffix}_예약모음_{today.strftime('%Y%m%d')}.pdf"
 
-    success, error = _send_email_with_pdf(official_email, subject, body, buffer, filename)
+    success, error = _send_email_with_attachment(official_email, subject, body, buffer, filename, mimetype)
 
     if success:
         log_admin_action('admin', f'Sent Bulk Report ({period}) - Email')
@@ -1498,11 +1742,117 @@ def user_send_pdf_to_admin(id):
 
 @app.route('/admin/download_excel')
 def download_excel():
-    if not session.get('is_admin'):
+    if not session.get('is_admin') and not session.get('is_dev'):
         return redirect(url_for('login'))
     
-    reservations = Reservation.query.all()
-    data = []
+    # Filter Logic
+    query = Reservation.query
+    
+    # DEBUG: Log received parameters
+    print(f"[EXCEL DEBUG] Received params - date: '{request.args.get('date')}', status: '{request.args.get('status')}', q: '{request.args.get('q')}'")
+    print(f"[EXCEL DEBUG] Full args: {dict(request.args)}")
+    
+    # 1. Date Filter (Range Support)
+    filter_date = request.args.get('date')
+    if filter_date:
+        try:
+            if ' to ' in filter_date or ' ~ ' in filter_date:
+                # Support both ' to ' and ' ~ ' separators (flatpickr locale differences)
+                separator = ' ~ ' if ' ~ ' in filter_date else ' to '
+                start_str, end_str = filter_date.split(separator)
+                start_date = datetime.strptime(start_str.strip(), '%Y-%m-%d')
+                end_date = datetime.strptime(end_str.strip(), '%Y-%m-%d') + timedelta(days=1) # Include end date
+                query = query.filter(Reservation.start_time >= start_date, Reservation.start_time < end_date)
+            else:
+                target_date = datetime.strptime(filter_date.strip(), '%Y-%m-%d')
+                next_date = target_date + timedelta(days=1)
+                query = query.filter(Reservation.start_time >= target_date, Reservation.start_time < next_date)
+        except ValueError:
+            pass # Invalid date format, ignore
+            
+    # 2. Status Filter
+    # (Retrieve blocked phones from Blacklist model)
+    blocked_phone_entries = Blacklist.query.all()
+    blocked_phones = [b.phone for b in blocked_phone_entries]
+
+    filter_status = request.args.get('status')
+    if filter_status:
+        if filter_status == 'noshow_blocked':
+            # Combined filter: noshow_penalty status OR phone in blacklist
+            query = query.filter(db.or_(
+                Reservation.status == 'noshow_penalty',
+                Reservation.phone.in_(blocked_phones)
+            ))
+        elif filter_status == 'blocked':
+            # Legacy support for blocked-only filter
+            query = query.filter(Reservation.phone.in_(blocked_phones))
+        else:
+            query = query.filter(Reservation.status == filter_status)
+        
+    # 3. Search Filter (Name, Phone, Status)
+    search_q = request.args.get('q')
+    if search_q:
+        # Handle "이름 (전화번호)" format from frontend autocomplete
+        import re
+        name_phone_match = re.match(r'^(.+?)\s*\(([0-9\-]+)\)$', search_q.strip())
+        if name_phone_match:
+            # Extract name and phone separately
+            search_name = f"%{name_phone_match.group(1).strip()}%"
+            search_phone = f"%{name_phone_match.group(2).strip()}%"
+        else:
+            search_name = f"%{search_q}%"
+            search_phone = f"%{search_q}%"
+        search = f"%{search_q}%"
+        
+        # Define Frontend Keywords for robust matching
+        # (Must match 'admin.html' data-search attributes)
+        status_keywords = {
+            'reserved': ['예약중', '예약됨', '예약'],
+            'checked_in': ['체크인', '이용중', '입실완료', '이용', '입실'],
+            'ended': ['종료', '이용완료', '완료'],
+            'cancelled': ['취소', '취소됨'],
+            'noshow_penalty': ['노쇼'],
+            'blocked': ['차단', '차단됨']
+        }
+        
+        # Find which statuses match the search query
+        matched_statuses = []
+        is_blocked_search = False
+        
+        for status_code, keywords in status_keywords.items():
+            for k in keywords:
+                if search_q in k or k in search_q:
+                    if status_code == 'blocked':
+                        is_blocked_search = True
+                    else:
+                        matched_statuses.append(status_code)
+                    break
+        
+        # Remove duplicates
+        matched_statuses = list(set(matched_statuses))
+        
+        conditions = [
+            Reservation.name.like(search_name),
+            Reservation.phone.like(search_phone)
+        ]
+        
+        if matched_statuses:
+            conditions.append(Reservation.status.in_(matched_statuses))
+            
+        if is_blocked_search and blocked_phones:
+             conditions.append(Reservation.phone.in_(blocked_phones))
+            
+        with open('excel_debug.log', 'a', encoding='utf-8') as f:
+            f.write(f"Search query: {search_q}\n")
+            f.write(f"Search pattern: {search}\n")
+            f.write(f"Conditions count: {len(conditions)}\n")
+        query = query.filter(db.or_(*conditions))
+
+        
+    # Order by Start Time Desc
+    reservations = query.order_by(Reservation.start_time.desc()).all()
+    with open('excel_debug.log', 'a', encoding='utf-8') as f:
+        f.write(f"Total reservations found: {len(reservations)}\\n")
     
     # Status Translation Map
     status_map = {
@@ -1514,17 +1864,20 @@ def download_excel():
         'noshow_penalty': '노쇼(패널티)'
     }
 
-    # Headers for processing (though we use openpyxl manual write below)
-    
     output = io.BytesIO()
     
-    # Use openpyxl directly instead of pandas
+    # Use openpyxl
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = '예약내역'
     
-    # Headers
-    headers = ['ID', '이름', '전화번호', '사용목적', '시작시간', '종료시간', '상태', '관리자 메모']
+    # All Data Headers
+    headers = [
+        'ID', '이름', '전화번호', '생년월일', '이메일', '주소',
+        '신청유형', '단체명', '사용목적', 
+        '기본시설', '부대시설', '이용예정인원',
+        '시작시간', '종료시간', '상태', '관리자 메모', '신청일시'
+    ]
     ws.append(headers)
     
     for r in reservations:
@@ -1532,18 +1885,40 @@ def download_excel():
             r.id,
             r.name,
             r.phone,
+            r.birth_date or '',
+            r.email or '',
+            r.address or '',
+            r.applicant_type or '개인',
+            r.org_name or '',
             r.purpose,
+            r.facility_basic or '',
+            r.facility_extra or '',
+            r.expected_count or 0,
             r.start_time,
             r.end_time,
             status_map.get(r.status, r.status),
-            r.admin_memo
+            r.admin_memo,
+            r.created_at
         ]
         ws.append(row)
+        
+    # Column Width Auto-adjustment (Approximation)
+    for col in ws.columns:
+        max_length = 0
+        column = col[0].column_letter # Get the column name
+        for cell in col:
+            try:
+                if len(str(cell.value)) > max_length:
+                    max_length = len(str(cell.value))
+            except:
+                pass
+        adjusted_width = (max_length + 2) * 1.1
+        ws.column_dimensions[column].width = adjusted_width
         
     wb.save(output)
     output.seek(0)
     
-    filename = f"reservation_list_{datetime.now().strftime('%Y%m%d')}.xlsx"
+    filename = f"reservation_list_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
     return send_file(output, as_attachment=True, download_name=filename)
 
 @app.route('/admin/block/<phone>', methods=['POST'])
@@ -1931,7 +2306,7 @@ def mask_phone(phone):
 
 @app.route('/admin/qr_code')
 def generate_qr_code():
-    if not session.get('is_admin'):
+    if not session.get('is_admin') and not session.get('is_dev'):
         return redirect(url_for('login'))
         
     # Generate URL for check-in page (using current host)
@@ -1960,7 +2335,7 @@ def generate_qr_code():
 
 @app.route('/admin/door_qr')
 def generate_door_qr():
-    if not session.get('is_admin'):
+    if not session.get('is_admin') and not session.get('is_dev'):
         return redirect(url_for('login'))
         
     token = get_setting('door_qr_token', 'ORYX_LAB_DOOR_2025')
@@ -1973,7 +2348,7 @@ def generate_door_qr():
 
 @app.route('/admin/download_qr_poster')
 def download_qr_poster():
-    if not session.get('is_admin'):
+    if not session.get('is_admin') and not session.get('is_dev'):
         return redirect(url_for('login'))
 
     # 1. Generate QR URL (Unified)
@@ -2099,8 +2474,9 @@ def perform_cleanup(days=365):
     anonymized_count = 0
     
     for res in old_reservations:
-        # Skip if already anonymized
-        if res.name == '정보삭제' and res.phone == '000-0000-0000':
+        # Skip if COMPLETELY anonymized (Check all fields)
+        if (res.name == '정보삭제' and res.phone == '000-0000-0000' and 
+            res.email is None and res.address is None and res.birth_date is None):
             continue
 
         # Delete Signature File
@@ -2127,6 +2503,9 @@ def perform_cleanup(days=365):
         res.name = '정보삭제'
         res.phone = '000-0000-0000'
         res.password = 'deleted' # Dummy header for hash check failure
+        res.birth_date = None
+        res.address = None
+        res.email = None
         res.purpose = '보존 기한 경과로 데이터 파기됨'
         res.signature_path = None
         res.signature_blob = None
@@ -2154,16 +2533,124 @@ def perform_cleanup(days=365):
 def dev_cleanup_route():
     if not session.get('is_dev'): return jsonify({'error': 'Unauthorized'}), 401
     
-    try:
-        anonymized, logs = perform_cleanup(days=365)
-        return jsonify({
-            'success': True, 
-            'deleted_count': anonymized, 
-            'deleted_logs': logs
-        })
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+    anonymized, logs = perform_cleanup()
+    return jsonify({'success': True, 'deleted_count': anonymized, 'deleted_logs': logs})
+
+# --- Scheduler for Auto Cleanup ---
+from apscheduler.schedulers.background import BackgroundScheduler
+import atexit
+
+def scheduled_cleanup():
+    with app.app_context():
+        try:
+            print("Running Scheduled Cleanup...")
+            perform_cleanup()
+        except Exception as e:
+            print(f"Scheduled Cleanup Failed: {e}")
+
+def scheduled_auto_mail(period):
+    """Send automatic bulk report email"""
+    with app.app_context():
+        try:
+            # Check if auto mail is enabled
+            setting_key = 'auto_mail_weekly' if period == 'week' else 'auto_mail_monthly'
+            if get_setting(setting_key) != 'true':
+                print(f"Auto mail ({period}) is disabled, skipping...")
+                return
+                
+            official_email = get_setting('official_email')
+            if not official_email:
+                print(f"Auto mail ({period}): No official email configured")
+                return
+            
+            # Calculate date range
+            today = datetime.now()
+            if period == 'week':
+                start_date = today - timedelta(days=7)
+                title_suffix = "주간"
+            else:  # month
+                start_date = today - timedelta(days=30)
+                title_suffix = "월간"
+            
+            # Fetch reservations
+            reservations = Reservation.query.filter(
+                Reservation.start_time >= start_date,
+                Reservation.status.in_(['reserved', 'checked_in', 'ended'])
+            ).order_by(Reservation.start_time).all()
+            
+            if not reservations:
+                print(f"Auto mail ({period}): No reservations found")
+                return
+            
+            # Get file format setting
+            file_format = get_setting('auto_mail_format') or 'merged'
+            
+            if file_format == 'zip':
+                # Generate individual PDFs and ZIP them
+                import zipfile
+                
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for idx, res in enumerate(reservations, 1):
+                        pdf_buffer = _generate_pdf_buffer(res)
+                        if pdf_buffer:
+                            pdf_name = f"{idx:03d}_{res.name}_{res.start_time.strftime('%Y%m%d')}.pdf"
+                            zf.writestr(pdf_name, pdf_buffer.read())
+                
+                zip_buffer.seek(0)
+                buffer = zip_buffer
+                filename = f"지혜마루_{title_suffix}_예약모음_{today.strftime('%Y%m%d')}.zip"
+            else:
+                # Generate Merged PDF using PyPDF2
+                from PyPDF2 import PdfMerger
+                
+                merger = PdfMerger()
+                
+                for res in reservations:
+                    pdf_buffer = _generate_pdf_buffer(res)
+                    if pdf_buffer:
+                        merger.append(pdf_buffer)
+                
+                buffer = io.BytesIO()
+                merger.write(buffer)
+                merger.close()
+                buffer.seek(0)
+                filename = f"지혜마루_{title_suffix}_예약모음_{today.strftime('%Y%m%d')}.pdf"
+            
+            # Send email
+            subject = f"[지혜마루] 시설 사용 신청서 모음 ({title_suffix}) - 자동발송"
+            body = f"""안녕하세요.
+지혜마루 작은도서관입니다.
+
+{title_suffix} 시설 사용 신청서 모음을 자동 송부드립니다.
+기간: {start_date.strftime('%Y-%m-%d')} ~ {today.strftime('%Y-%m-%d')}
+총 건수: {len(reservations)}건
+
+감사합니다.
+
+* 이 메일은 자동 발송되었습니다."""
+            
+            success, error = _send_email_with_pdf(official_email, subject, body, buffer, filename)
+            
+            if success:
+                print(f"Auto mail ({period}): Sent successfully to {official_email}, {len(reservations)} reservations")
+            else:
+                print(f"Auto mail ({period}): Failed - {error}")
+                
+        except Exception as e:
+            print(f"Auto mail ({period}) Error: {e}")
+
+scheduler = BackgroundScheduler()
+# Run daily at 00:00
+scheduler.add_job(func=scheduled_cleanup, trigger="cron", hour=0, minute=0)
+# Weekly report: Every Monday at 09:00
+scheduler.add_job(func=lambda: scheduled_auto_mail('week'), trigger="cron", day_of_week='mon', hour=9, minute=0, id='auto_mail_weekly')
+# Monthly report: Every 1st of month at 09:00
+scheduler.add_job(func=lambda: scheduled_auto_mail('month'), trigger="cron", day=1, hour=9, minute=0, id='auto_mail_monthly')
+scheduler.start()
+
+# Shut down the scheduler when exiting the app
+atexit.register(lambda: scheduler.shutdown())
 
 @app.route('/admin/diagnostics')
 def diagnostics():
