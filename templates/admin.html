@@ -66,11 +66,17 @@
                             <i class="fas fa-file-pdf me-1"></i>신청서 모음 전송
                         </button>
                         <ul class="dropdown-menu">
-                            <li><a class="dropdown-item" href="#" onclick="showBulkReportModal('week')">지난 1주 (주간)</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="showBulkReportModal('half')">지난 15일 (보름)</a></li>
-                            <li><a class="dropdown-item" href="#" onclick="showBulkReportModal('month')">지난 30일 (월간)</a></li>
-                            <li><hr class="dropdown-divider"></li>
-                            <li><a class="dropdown-item" href="#" onclick="showBulkReportModal('custom')">🔍 현재 검색 결과 보내기</a></li>
+                            <li><a class="dropdown-item" href="#" onclick="showBulkReportModal('week')">지난 1주 (주간)</a>
+                            </li>
+                            <li><a class="dropdown-item" href="#" onclick="showBulkReportModal('half')">지난 15일 (보름)</a>
+                            </li>
+                            <li><a class="dropdown-item" href="#" onclick="showBulkReportModal('month')">지난 30일 (월간)</a>
+                            </li>
+                            <li>
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li><a class="dropdown-item" href="#" onclick="showBulkReportModal('custom')">🔍 현재 검색 결과
+                                    보내기</a></li>
                         </ul>
                     </div>
                     <a href="#" onclick="downloadExcelWithFilters(); return false;" class="btn btn-success btn-sm"><i
@@ -154,10 +160,12 @@
                                 <td>{{ r.purpose }}</td>
                                 <!-- Removed Address Data -->
                                 <td>
-                                    <div class="input-group input-group-sm" style="width: 200px;">
+                                    <div class="input-group input-group-sm" style="width: 280px;">
                                         <input type="text" class="form-control memo-input"
-                                            value="{{ r.admin_memo or '' }}" id="memo-{{ r.id }}" placeholder="메모 입력">
-                                        <button class="btn btn-outline-secondary" onclick="saveMemo({{ r.id }})"><i
+                                            value="{{ r.admin_memo or '' }}" id="memo-{{ r.id }}" placeholder="메모 입력" {%
+                                            if r.status=='cancelled' %}disabled{% endif %}>
+                                        <button class="btn btn-outline-secondary" onclick="saveMemo({{ r.id }})" {% if
+                                            r.status=='cancelled' %}disabled{% endif %}><i
                                                 class="fas fa-save"></i></button>
                                     </div>
                                 </td>
@@ -170,6 +178,17 @@
                                         onclick="sendOfficialPdf({{ r.id }}, '{{ r.name }}')" title="담당자(군청) 전송">
                                         <i class="fas fa-paper-plane"></i>
                                     </button>
+                                    {% if r.status == 'reserved' %}
+                                    <button class="btn btn-sm btn-warning text-dark"
+                                        onclick="openCancelModal({{ r.id }}, '{{ r.name }}')" title="예약취소">
+                                        취소
+                                    </button>
+                                    {% elif r.status == 'cancelled' and enable_restore_feature %}
+                                    <button class="btn btn-sm btn-outline-success"
+                                        onclick="restoreReservation({{ r.id }}, '{{ r.name }}')" title="취소 해제">
+                                        <i class="fas fa-undo"></i>
+                                    </button>
+                                    {% endif %}
                                     {% if r.phone in blocked_phones %}
                                     <button class="btn btn-sm btn-outline-secondary" disabled>
                                         차단중
@@ -612,14 +631,15 @@
                                 <input type="email" class="form-control" id="officialEmail"
                                     placeholder="official@gov.kr" value="{{ settings.official_email or '' }}">
                                 <div class="form-text">이 주소로 신청서 PDF가 자동 발송됩니다.</div>
-                                
+
                                 <hr>
-                                <label class="form-label fw-bold text-primary"><i class="fas fa-clock me-1"></i>자동 메일 전송 설정</label>
+                                <label class="form-label fw-bold text-primary"><i class="fas fa-clock me-1"></i>자동 메일 전송
+                                    설정</label>
                                 <div class="row g-2 mb-2">
                                     <div class="col-md-6">
                                         <div class="form-check">
                                             <input class="form-check-input" type="checkbox" id="autoMailWeekly"
-                                                {{ 'checked' if settings.auto_mail_weekly == 'true' else '' }}>
+                                                {{ 'checked' if settings.auto_mail_weekly=='true' else '' }}>
                                             <label class="form-check-label" for="autoMailWeekly">
                                                 매주 월요일 오전 9시 자동 발송 (주간)
                                             </label>
@@ -628,7 +648,7 @@
                                     <div class="col-md-6">
                                         <div class="form-check">
                                             <input class="form-check-input" type="checkbox" id="autoMailMonthly"
-                                                {{ 'checked' if settings.auto_mail_monthly == 'true' else '' }}>
+                                                {{ 'checked' if settings.auto_mail_monthly=='true' else '' }}>
                                             <label class="form-check-label" for="autoMailMonthly">
                                                 매월 1일 오전 9시 자동 발송 (월간)
                                             </label>
@@ -639,15 +659,17 @@
                                     <label class="form-label small fw-bold">자동 발송 파일 형식</label>
                                     <div class="d-flex gap-3">
                                         <div class="form-check">
-                                            <input class="form-check-input" type="radio" name="autoMailFormat" id="autoFormatMerged" value="merged"
-                                                {{ 'checked' if settings.auto_mail_format != 'zip' else '' }}>
+                                            <input class="form-check-input" type="radio" name="autoMailFormat"
+                                                id="autoFormatMerged" value="merged" {{ 'checked' if
+                                                settings.auto_mail_format !='zip' else '' }}>
                                             <label class="form-check-label" for="autoFormatMerged">
                                                 <i class="fas fa-file-pdf text-danger me-1"></i>하나의 PDF로 병합
                                             </label>
                                         </div>
                                         <div class="form-check">
-                                            <input class="form-check-input" type="radio" name="autoMailFormat" id="autoFormatZip" value="zip"
-                                                {{ 'checked' if settings.auto_mail_format == 'zip' else '' }}>
+                                            <input class="form-check-input" type="radio" name="autoMailFormat"
+                                                id="autoFormatZip" value="zip" {{ 'checked' if
+                                                settings.auto_mail_format=='zip' else '' }}>
                                             <label class="form-check-label" for="autoFormatZip">
                                                 <i class="fas fa-file-archive text-warning me-1"></i>개별 PDF (ZIP)
                                             </label>
@@ -682,7 +704,8 @@
                     <label class="form-label fw-bold">파일 형식 선택</label>
                     <div class="d-flex gap-3">
                         <div class="form-check">
-                            <input class="form-check-input" type="radio" name="bulkFormat" id="formatMerged" value="merged" checked>
+                            <input class="form-check-input" type="radio" name="bulkFormat" id="formatMerged"
+                                value="merged" checked>
                             <label class="form-check-label" for="formatMerged">
                                 <i class="fas fa-file-pdf text-danger me-1"></i>하나의 PDF로 병합
                                 <div class="text-muted small">파일 크기 작음, 연속 열람</div>
@@ -701,6 +724,66 @@
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">취소</button>
                     <button type="button" class="btn btn-primary" onclick="sendBulkReportWithOptions()">
                         <i class="fas fa-paper-plane me-1"></i>전송
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Cancel Reservation Modal -->
+    <div class="modal fade" id="cancelReservationModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning text-dark">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-times-circle me-2"></i>예약 취소</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <input type="hidden" id="cancelReservationId">
+                    <p class="mb-3"><strong id="cancelReservationName"></strong> 님의 예약을 취소합니다.</p>
+
+                    <label class="form-label fw-bold">취소 사유 선택</label>
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="cancelReason" id="reason1" value="시설 점검">
+                            <label class="form-check-label" for="reason1">시설 점검</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="cancelReason" id="reason2"
+                                value="행사 일정 변경">
+                            <label class="form-check-label" for="reason2">행사 일정 변경</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="cancelReason" id="reason3"
+                                value="사용목적 부적합 (도서관 목적 부합하지 않음)">
+                            <label class="form-check-label" for="reason3">사용목적 부적합 (도서관 목적에 부합하지 않음)</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="cancelReason" id="reason4" value="중복 예약">
+                            <label class="form-check-label" for="reason4">중복 예약</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="cancelReason" id="reason5"
+                                value="허위 정보 기재">
+                            <label class="form-check-label" for="reason5">허위 정보 기재</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="cancelReason" id="reason6" value="기타"
+                                checked>
+                            <label class="form-check-label" for="reason6">기타 (직접 입력)</label>
+                        </div>
+                    </div>
+
+                    <div id="customReasonDiv">
+                        <label class="form-label fw-bold">취소 사유 입력</label>
+                        <input type="text" class="form-control" id="customCancelReason" placeholder="취소 사유를 입력하세요"
+                            disabled>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">닫기</button>
+                    <button type="button" class="btn btn-warning" onclick="confirmCancelReservation()">
+                        <i class="fas fa-times me-1"></i>예약 취소
                     </button>
                 </div>
             </div>
@@ -1171,6 +1254,73 @@
                 });
         });
     }
+    // Cancel Reservation with Reason
+    function openCancelModal(id, name) {
+        document.getElementById('cancelReservationId').value = id;
+        document.getElementById('cancelReservationName').textContent = name;
+        document.getElementById('customCancelReason').value = '';
+        document.getElementById('customCancelReason').disabled = true;
+        // Reset to '기타' not checked
+        document.getElementById('reason1').checked = true;
+        new bootstrap.Modal(document.getElementById('cancelReservationModal')).show();
+    }
+
+    // Toggle custom reason input based on radio selection
+    document.querySelectorAll('input[name="cancelReason"]').forEach(radio => {
+        radio.addEventListener('change', function () {
+            const customInput = document.getElementById('customCancelReason');
+            customInput.disabled = (this.value !== '기타');
+            if (this.value !== '기타') {
+                customInput.value = '';
+            }
+        });
+    });
+
+    function confirmCancelReservation() {
+        const id = document.getElementById('cancelReservationId').value;
+        const selectedReason = document.querySelector('input[name="cancelReason"]:checked').value;
+        const customReason = document.getElementById('customCancelReason').value.trim();
+
+        const reason = selectedReason === '기타' ? (customReason || '기타') : selectedReason;
+
+        if (!reason) {
+            showAlert('취소 사유를 입력해주세요.');
+            return;
+        }
+
+        fetch(`/admin/cancel/${id}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ reason: reason })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    bootstrap.Modal.getInstance(document.getElementById('cancelReservationModal')).hide();
+                    showAlert('✅ 예약이 취소되었습니다.\n\n📞 예약자에게 취소 사실을 연락해주세요!', () => location.reload());
+                } else {
+                    showAlert(data.error || '취소 실패');
+                }
+            });
+    }
+
+    // Restore cancelled reservation
+    function restoreReservation(id, name) {
+        showConfirm(`${name}님의 취소된 예약을 복원하시겠습니까?`, function () {
+            fetch(`/admin/restore/${id}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('예약이 복원되었습니다.', () => location.reload());
+                    } else {
+                        showAlert(data.error || '복원 실패');
+                    }
+                });
+        });
+    }
 
     function blockUser(phone, name) {
         showConfirm(`정말 ${name}님을 30일간 차단하시겠습니까?`, function () {
@@ -1423,21 +1573,21 @@
     }
 
     let selectedBulkPeriod = null;
-    
+
     function showBulkReportModal(period) {
         selectedBulkPeriod = period;
         const map = { 'week': '지난 1주 (주간)', 'half': '지난 15일 (보름)', 'month': '지난 30일 (월간)', 'custom': '현재 검색 결과' };
-        
+
         if (period === 'custom') {
             const date = document.getElementById('filterDate').value;
             const status = document.getElementById('filterStatus').value;
             const q = document.getElementById('filterSearch').value;
-            
+
             if (!date && !status && !q) {
                 showAlert('날짜, 상태, 또는 검색어를 먼저 입력해주세요.');
                 return;
             }
-            
+
             let filterDesc = [];
             if (date) filterDesc.push(`날짜: ${date}`);
             if (status) filterDesc.push(`상태: ${status}`);
@@ -1446,27 +1596,27 @@
         } else {
             document.getElementById('bulkReportDesc').innerHTML = `<strong>${map[period]}</strong> 신청서를 담당자 이메일로 전송합니다.`;
         }
-        
+
         const modal = new bootstrap.Modal(document.getElementById('bulkReportModal'));
         modal.show();
     }
-    
+
     function sendBulkReportWithOptions() {
         const format = document.querySelector('input[name="bulkFormat"]:checked').value;
         const period = selectedBulkPeriod;
-        
+
         // Close modal
         bootstrap.Modal.getInstance(document.getElementById('bulkReportModal')).hide();
-        
+
         showProgress('📋 예약 데이터 조회 중...');
-        
+
         // Simulate progress updates
         setTimeout(() => updateProgress('📄 PDF 생성 중...'), 1500);
         setTimeout(() => updateProgress(format === 'zip' ? '📦 ZIP 압축 중...' : '📄 PDF 병합 중...'), 3000);
         setTimeout(() => updateProgress('📧 메일 전송 중...'), 5000);
 
         let body = { period: period, format: format };
-        
+
         if (period === 'custom') {
             body.date = document.getElementById('filterDate').value;
             body.status = document.getElementById('filterStatus').value;

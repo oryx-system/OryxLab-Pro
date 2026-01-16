@@ -91,10 +91,32 @@
                     <h6 class="text-dark fw-bold mb-1"><i class="fas fa-database text-warning me-2"></i>데이터베이스 복원</h6>
                     <p class="mb-0 small text-muted">백업 파일(.sqlite)을 업로드하여 복원합니다.</p>
                 </div>
-                <div>
+                <div class="d-flex gap-2">
+                    <a href="/admin/backup" class="btn btn-success btn-sm rounded-pill px-3">
+                        <i class="fas fa-download me-1"></i>DB 백업
+                    </a>
                     <input type="file" id="dbRestoreFile" accept=".sqlite,.db" class="d-none">
-                    <button class="btn btn-outline-warning btn-sm rounded-pill px-4" id="btnRestoreDb">
+                    <button class="btn btn-outline-warning btn-sm rounded-pill px-3" id="btnRestoreDb">
                         <i class="fas fa-upload me-1"></i>DB 복원
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Password Management -->
+    <div class="col-md-12 col-lg-6">
+        <div class="card shadow-sm border-0 bg-light">
+            <div class="card-body d-flex align-items-center justify-content-between">
+                <div>
+                    <h6 class="text-dark fw-bold mb-1"><i class="fas fa-key text-danger me-2"></i>관리자 비밀번호</h6>
+                    <small class="text-muted">개발자 전용 - 관리자에게 노출 금지</small>
+                </div>
+                <div class="input-group input-group-sm" style="width: auto;">
+                    <input type="text" class="form-control text-center fw-bold" id="adminPwDisplay"
+                        value="{{ settings.get('admin_pw_plaintext', '(해시 전용)') }}" readonly style="min-width: 120px;">
+                    <button class="btn btn-outline-secondary" type="button" id="btnCopyAdminPw" title="복사">
+                        <i class="fas fa-copy"></i>
                     </button>
                 </div>
             </div>
@@ -126,6 +148,53 @@
                     </div>
                     <small class="text-muted">해제 시 텔레그램에 이름/전번 전체 표시</small>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Developer Telegram Settings -->
+    <div class="col-md-6 col-lg-8">
+        <div class="card shadow-sm border-0 h-100 border-danger border-opacity-25">
+            <div class="card-body">
+                <h6 class="text-danger fw-bold mb-3"><i class="fas fa-bell me-2"></i>개발자 감시 알림 설정</h6>
+                <div class="row g-2">
+                    <div class="col-md-5">
+                        <label class="form-label small fw-bold mb-1">Bot Token</label>
+                        <input type="text" class="form-control form-control-sm" id="devTelegramToken"
+                            value="{{ settings.get('dev_telegram_token', '') }}" placeholder="123456:ABC...">
+                    </div>
+                    <div class="col-md-4">
+                        <label class="form-label small fw-bold mb-1">Chat ID</label>
+                        <input type="text" class="form-control form-control-sm" id="devTelegramChatId"
+                            value="{{ settings.get('dev_telegram_chat_id', '') }}" placeholder="-100123456789">
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button class="btn btn-danger btn-sm w-100" id="btnSaveDevTelegram">
+                            <i class="fas fa-save me-1"></i>저장
+                        </button>
+                    </div>
+                </div>
+                <div class="d-flex align-items-center mt-3 p-2 bg-light rounded">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="pauseDevAlerts" {% if
+                            settings.get('dev_telegram_paused', 'false' )=='true' %}checked{% endif %}>
+                        <label class="form-check-label fw-bold text-danger" for="pauseDevAlerts">
+                            <i class="fas fa-pause-circle me-1"></i>알림 일시 정지
+                        </label>
+                    </div>
+                    <small class="text-muted ms-3">체크하면 <strong>모든</strong> 개발자 알림이 일시 정지됩니다</small>
+                </div>
+                <div class="d-flex align-items-center mt-3 p-2 bg-light rounded">
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="enableRestoreFeature" {% if
+                            settings.get('enable_restore_feature', 'false' )=='true' %}checked{% endif %}>
+                        <label class="form-check-label fw-bold text-success" for="enableRestoreFeature">
+                            <i class="fas fa-undo me-1"></i>취소 해제 기능 활성화
+                        </label>
+                    </div>
+                    <small class="text-muted ms-3">관리자 화면에서 취소된 예약 복원 버튼 표시</small>
+                </div>
+                <small class="text-muted mt-2 d-block">관리자와 별도 - 로그인 실패, 설정변경 등 감시 알림 수신</small>
             </div>
         </div>
     </div>
@@ -171,7 +240,7 @@
     <div class="tab-pane fade show active" id="access-logs" role="tabpanel">
         <div class="card shadow border-0">
             <div class="card-body p-0">
-                <div class="table-responsive" style="max-height: 600px;">
+                <div class="table-responsive" style="max-height: 800px;">
                     <table class="table table-hover table-striped mb-0 align-middle">
                         <thead class="table-dark sticky-top">
                             <tr>
@@ -186,10 +255,16 @@
                             {% for log in access_logs %}
                             <tr>
                                 <td class="text-nowrap">{{ log.timestamp.strftime('%Y-%m-%d %H:%M:%S') }}</td>
-                                <td><span class="badge bg-secondary">{{ log.method | translate_method }}</span></td>
+                                <td><span class="badge bg-secondary" style="font-family: 'Noto Sans KR', sans-serif;">{{
+                                        log.method | translate_method }}</span></td>
                                 <td class="text-primary">{{ log.path }}</td>
                                 <td>
                                     {{ log.ip_address }}
+                                    {% if log.ip_address in ip_name_map %}
+                                    <span class="text-primary fw-bold ms-2"
+                                        style="font-family: 'Noto Sans KR', sans-serif;">({{ ip_name_map[log.ip_address]
+                                        | join(', ') }})</span>
+                                    {% endif %}
                                     <span class="badge bg-light text-dark border ms-1">{{ log.user_agent | detect_device
                                         }}</span>
                                 </td>
@@ -209,7 +284,7 @@
     <div class="tab-pane fade" id="admin-logs" role="tabpanel">
         <div class="card shadow border-0">
             <div class="card-body p-0">
-                <div class="table-responsive" style="max-height: 600px;">
+                <div class="table-responsive" style="max-height: 800px;">
                     <table class="table table-hover mb-0 align-middle">
                         <thead class="bg-warning bg-opacity-25 sticky-top">
                             <tr>
@@ -328,7 +403,7 @@
                 </div>
             </div>
             <div class="card-body p-0">
-                <div class="table-responsive" style="max-height: 600px;">
+                <div class="table-responsive" style="max-height: 800px;">
                     <table class="table table-sm table-bordered mb-0 small">
                         <thead class="table-light sticky-top">
                             <tr>
@@ -385,6 +460,120 @@
 {% endblock %}
 
 {% block scripts %}
+<!-- Slide to Delete Modal -->
+<style>
+    .slide-container {
+        background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+        box-shadow: inset 0 2px 10px rgba(0, 0, 0, 0.5);
+        position: relative;
+    }
+
+    .slide-container::before {
+        content: '';
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        width: 0%;
+        background: linear-gradient(90deg, transparent, rgba(231, 74, 59, 0.3), rgba(231, 74, 59, 0.5));
+        border-radius: 25px;
+        transition: width 0.1s ease;
+        z-index: 1;
+    }
+
+    .slide-track {
+        color: rgba(255, 255, 255, 0.5) !important;
+        font-weight: 500;
+        letter-spacing: 1px;
+        z-index: 2;
+        animation: pulse-text 2s ease-in-out infinite;
+    }
+
+    @keyframes pulse-text {
+
+        0%,
+        100% {
+            opacity: 0.4;
+        }
+
+        50% {
+            opacity: 0.8;
+        }
+    }
+
+    .slide-button {
+        background: linear-gradient(180deg, #e74a3b 0%, #c0392b 100%);
+        box-shadow: 0 4px 15px rgba(231, 74, 59, 0.4), 0 0 20px rgba(231, 74, 59, 0.2);
+        transition: box-shadow 0.3s ease, transform 0.1s ease;
+        z-index: 10;
+    }
+
+    .slide-button:hover {
+        box-shadow: 0 4px 20px rgba(231, 74, 59, 0.6), 0 0 30px rgba(231, 74, 59, 0.4);
+    }
+
+    .slide-button.success {
+        background: linear-gradient(180deg, #1cc88a 0%, #17a673 100%) !important;
+        box-shadow: 0 4px 20px rgba(28, 200, 138, 0.6), 0 0 30px rgba(28, 200, 138, 0.4) !important;
+    }
+
+    @keyframes shake {
+
+        0%,
+        100% {
+            transform: translateX(0);
+        }
+
+        25% {
+            transform: translateX(-5px);
+        }
+
+        75% {
+            transform: translateX(5px);
+        }
+    }
+
+    .slide-button.shake {
+        animation: shake 0.5s ease;
+    }
+</style>
+<div class="modal fade" id="slideDeleteModal" tabindex="-1" data-bs-backdrop="static">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0" style="background: linear-gradient(135deg, #1e1e1e 0%, #2d2d2d 100%);">
+            <div class="modal-header border-0" style="background: linear-gradient(90deg, #e74a3b 0%, #c0392b 100%);">
+                <h5 class="modal-title fw-bold text-white"><i class="fas fa-exclamation-triangle me-2"></i>⚠️ 전체 삭제 확인
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body text-center py-5">
+                <div class="mb-4">
+                    <i class="fas fa-database fa-3x text-danger mb-3" style="opacity: 0.8;"></i>
+                    <p class="fw-bold text-danger fs-5 mb-2">⚠️ 모든 예약 데이터가 영구 삭제됩니다!</p>
+                    <p class="text-white-50 mb-0">이 작업은 되돌릴 수 없습니다.</p>
+                </div>
+
+                <div class="slide-container mx-auto"
+                    style="width: 300px; height: 56px; border-radius: 28px; overflow: hidden;">
+                    <div class="slide-track d-flex align-items-center justify-content-center h-100 position-relative">
+                        <i class="fas fa-chevron-right me-2"></i>밀어서 삭제<i class="fas fa-chevron-right ms-2"></i>
+                    </div>
+                    <div id="slideButton"
+                        class="slide-button position-absolute d-flex align-items-center justify-content-center text-white"
+                        style="width: 70px; height: 52px; top: 2px; left: 2px; border-radius: 26px; cursor: grab; user-select: none;">
+                        <i class="fas fa-trash-alt fa-lg"></i>
+                    </div>
+                </div>
+                <div id="slideProgress" class="text-white-50 small mt-3" style="opacity: 0;">0%</div>
+            </div>
+            <div class="modal-footer border-0 justify-content-center">
+                <button type="button" class="btn btn-outline-light px-4" data-bs-dismiss="modal">
+                    <i class="fas fa-times me-2"></i>취소
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
     // Maintenance Toggle
     const mSwitch = document.getElementById('maintenanceSwitch');
@@ -651,27 +840,242 @@
         });
     }
 
-    // Delete All
-    if (btnDelAll) {
-        btnDelAll.addEventListener('click', function () {
-            if (!confirm('경고: 모든 예약 데이터를 영구 삭제하시겠습니까?\n이 작업은 절대 되돌릴 수 없습니다!')) return;
-            // Double Check
-            if (!confirm('정말 모든 데이터를 초기화하시겠습니까? (최종 확인)')) return;
+    // Delete All - Show Slide Modal
+    const slideDeleteModal = document.getElementById('slideDeleteModal');
+    const slideButton = document.getElementById('slideButton');
+    let slideModal = null;
 
-            fetch('/dev/reservations/delete_bulk', {
+    if (btnDelAll && slideDeleteModal) {
+        slideModal = new bootstrap.Modal(slideDeleteModal);
+        btnDelAll.addEventListener('click', function () {
+            slideModal.show();
+        });
+    }
+
+    // Slide to Delete Logic
+    if (slideButton) {
+        let isDragging = false;
+        let startX = 0;
+        let currentX = 0;
+        const maxSlide = 226; // 300 - 70 - 4
+        const slideContainer = document.querySelector('.slide-container');
+        const slideProgress = document.getElementById('slideProgress');
+
+        function resetSlider() {
+            slideButton.style.left = '2px';
+            slideButton.classList.remove('success');
+            slideButton.classList.add('shake');
+            if (slideContainer) slideContainer.style.setProperty('--progress', '0%');
+            if (slideProgress) {
+                slideProgress.style.opacity = '0';
+                slideProgress.textContent = '0%';
+            }
+            setTimeout(() => slideButton.classList.remove('shake'), 500);
+        }
+
+        function updateProgress(x) {
+            const percent = Math.round((x / maxSlide) * 100);
+            if (slideProgress) {
+                slideProgress.style.opacity = '1';
+                slideProgress.textContent = percent + '%';
+                slideProgress.style.color = percent >= 90 ? '#1cc88a' : 'rgba(255,255,255,0.5)';
+            }
+            if (slideContainer) {
+                slideContainer.style.setProperty('--progress', percent + '%');
+                slideContainer.querySelector('::before')?.style?.setProperty('width', percent + '%');
+            }
+        }
+
+        slideButton.addEventListener('mousedown', function (e) {
+            isDragging = true;
+            startX = e.clientX - slideButton.offsetLeft;
+            slideButton.style.cursor = 'grabbing';
+        });
+
+        slideButton.addEventListener('touchstart', function (e) {
+            isDragging = true;
+            startX = e.touches[0].clientX - slideButton.offsetLeft;
+        });
+
+        document.addEventListener('mousemove', function (e) {
+            if (!isDragging) return;
+            currentX = Math.min(Math.max(2, e.clientX - startX), maxSlide);
+            slideButton.style.left = currentX + 'px';
+            updateProgress(currentX);
+
+            // Change to success when near end
+            if (currentX > maxSlide * 0.8) {
+                slideButton.classList.add('success');
+            } else {
+                slideButton.classList.remove('success');
+            }
+        });
+
+        document.addEventListener('touchmove', function (e) {
+            if (!isDragging) return;
+            currentX = Math.min(Math.max(2, e.touches[0].clientX - startX), maxSlide);
+            slideButton.style.left = currentX + 'px';
+            updateProgress(currentX);
+
+            if (currentX > maxSlide * 0.8) {
+                slideButton.classList.add('success');
+            } else {
+                slideButton.classList.remove('success');
+            }
+        });
+
+        document.addEventListener('mouseup', function () {
+            if (!isDragging) return;
+            isDragging = false;
+            slideButton.style.cursor = 'grab';
+
+            if (currentX >= maxSlide * 0.9) {
+                // Execute delete
+                slideButton.innerHTML = '<i class="fas fa-check fa-lg"></i>';
+                setTimeout(() => {
+                    if (slideModal) slideModal.hide();
+                    // 최종 확인
+                    if (confirm('⚠️ 정말로 모든 데이터를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다!')) {
+                        executeDeleteAll();
+                    } else {
+                        slideButton.innerHTML = '<i class="fas fa-trash-alt fa-lg"></i>';
+                        resetSlider();
+                    }
+                }, 300);
+            } else {
+                resetSlider();
+            }
+            currentX = 0;
+        });
+
+        document.addEventListener('touchend', function () {
+            if (!isDragging) return;
+            isDragging = false;
+
+            if (currentX >= maxSlide * 0.9) {
+                slideButton.innerHTML = '<i class="fas fa-check fa-lg"></i>';
+                setTimeout(() => {
+                    if (slideModal) slideModal.hide();
+                    // 최종 확인
+                    if (confirm('⚠️ 정말로 모든 데이터를 삭제하시겠습니까?\n\n이 작업은 되돌릴 수 없습니다!')) {
+                        executeDeleteAll();
+                    } else {
+                        slideButton.innerHTML = '<i class="fas fa-trash-alt fa-lg"></i>';
+                        resetSlider();
+                    }
+                }, 300);
+            } else {
+                resetSlider();
+            }
+            currentX = 0;
+        });
+
+
+        // Reset on modal close
+        slideDeleteModal.addEventListener('hidden.bs.modal', resetSlider);
+    }
+
+    function executeDeleteAll() {
+        fetch('/dev/reservations/delete_bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'all' })
+        })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    showAlert('모든 데이터가 삭제되었습니다.', () => location.reload());
+                } else {
+                    showAlert('삭제 실패: ' + data.error);
+                }
+            })
+            .catch(err => showAlert('서버 통신 오류'));
+    }
+
+    // Copy Admin Password
+    const btnCopyAdminPw = document.getElementById('btnCopyAdminPw');
+    if (btnCopyAdminPw) {
+        btnCopyAdminPw.addEventListener('click', function () {
+            const pwInput = document.getElementById('adminPwDisplay');
+            navigator.clipboard.writeText(pwInput.value).then(() => {
+                this.innerHTML = '<i class="fas fa-check"></i>';
+                setTimeout(() => {
+                    this.innerHTML = '<i class="fas fa-copy"></i>';
+                }, 1500);
+            });
+        });
+    }
+
+    // Save Dev Telegram Settings
+    const btnSaveDevTelegram = document.getElementById('btnSaveDevTelegram');
+    if (btnSaveDevTelegram) {
+        btnSaveDevTelegram.addEventListener('click', function () {
+            const token = document.getElementById('devTelegramToken').value;
+            const chatId = document.getElementById('devTelegramChatId').value;
+
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i>저장 중...';
+
+            fetch('/dev/save_telegram', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ mode: 'all' })
+                body: JSON.stringify({ token: token, chat_id: chatId })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-save me-1"></i>저장';
+                    if (data.success) {
+                        showAlert('개발자 텔레그램 설정이 저장되었습니다.\n테스트 메시지를 확인해주세요.');
+                    } else {
+                        showAlert('저장 실패: ' + data.error);
+                    }
+                })
+                .catch(() => {
+                    this.disabled = false;
+                    this.innerHTML = '<i class="fas fa-save me-1"></i>저장';
+                    showAlert('서버 통신 오류');
+                });
+        });
+    }
+
+    // Pause toggle handler
+    const pauseToggle = document.getElementById('pauseDevAlerts');
+    if (pauseToggle) {
+        pauseToggle.addEventListener('change', function () {
+            const paused = this.checked;
+            fetch('/dev/toggle_pause_alerts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ paused: paused })
             })
                 .then(res => res.json())
                 .then(data => {
                     if (data.success) {
-                        showAlert('모든 데이터가 삭제되었습니다.', () => location.reload());
-                    } else {
-                        showAlert('삭제 실패: ' + data.error);
+                        showAlert(paused ? '알림이 일시 정지되었습니다.' : '알림이 재개되었습니다.');
                     }
                 })
-                .catch(err => showAlert('서버 통신 오류'));
+                .catch(() => showAlert('설정 저장 실패'));
+        });
+    }
+
+    // Restore feature toggle handler
+    const restoreToggle = document.getElementById('enableRestoreFeature');
+    if (restoreToggle) {
+        restoreToggle.addEventListener('change', function () {
+            const enabled = this.checked;
+            fetch('/dev/toggle_restore_feature', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ enabled: enabled })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert(enabled ? '취소 해제 기능이 활성화되었습니다.' : '취소 해제 기능이 비활성화되었습니다.');
+                    }
+                })
+                .catch(() => showAlert('설정 저장 실패'));
         });
     }
 </script>

@@ -269,6 +269,10 @@
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
+                <div class="alert alert-success py-2 mb-3">
+                    <i class="fas fa-user-secret me-2"></i>
+                    <strong>익명으로 처리됩니다.</strong> 개인정보는 수집되지 않습니다.
+                </div>
                 <p class="text-muted small">서비스 이용 중 불편한 점이나 추가되었으면 하는 기능이 있다면 자유롭게 남겨주세요.</p>
                 <textarea class="form-control" id="feedbackMsg" rows="5" placeholder="내용을 입력해주세요..."></textarea>
             </div>
@@ -309,8 +313,8 @@
                 <!-- Floating Action Buttons (Bottom Center) -->
                 <div class="position-absolute bottom-0 start-50 translate-middle-x mb-4 d-flex gap-2"
                     style="z-index: 100;">
-                    <button type="button" class="btn btn-secondary rounded-pill px-3 py-2 shadow-lg btn-sm"
-                        id="btnSignClear" style="min-width: 80px;">
+                    <button type="button" class="btn btn-secondary rounded-pill px-3 py-2 shadow-lg btn-sm text-nowrap"
+                        id="btnSignClear">
                         <i class="fas fa-redo me-1"></i>지우기
                     </button>
                     <button type="button" class="btn btn-primary rounded-pill px-4 py-2 shadow-lg fw-bold btn-sm"
@@ -403,7 +407,36 @@
                     endSelect.value = firstValid.value;
                 }
             }
+
+            // Check time limit warning
+            checkTimeLimitWarning();
         });
+
+        // End time change - check 4 hour limit
+        document.getElementById('resEndTime').addEventListener('change', checkTimeLimitWarning);
+
+        function checkTimeLimitWarning() {
+            const startHour = parseInt(document.getElementById('resStartTime').value.split(':')[0]);
+            const endHour = parseInt(document.getElementById('resEndTime').value.split(':')[0]);
+            const diff = endHour - startHour;
+
+            // Remove existing warning
+            const existingWarning = document.getElementById('timeLimitWarning');
+            if (existingWarning) existingWarning.remove();
+
+            // Show warning if more than 4 hours
+            if (diff > 4) {
+                const warningDiv = document.createElement('div');
+                warningDiv.id = 'timeLimitWarning';
+                warningDiv.className = 'alert alert-warning py-2 mt-2 small';
+                warningDiv.innerHTML = '<i class="fas fa-exclamation-triangle me-2"></i><strong>안내:</strong> 1회 최대 예약 시간은 <strong>4시간</strong>입니다.';
+
+                const timeContainer = document.getElementById('resEndTime').closest('.bg-light');
+                if (timeContainer) {
+                    timeContainer.appendChild(warningDiv);
+                }
+            }
+        }
 
         // Load Remembered Info (including optional fields)
         document.getElementById('rememberMe').checked = true;
@@ -646,6 +679,14 @@
             btnOpenSign.classList.add('btn-outline-secondary');
 
             signModal.hide();
+
+            // 예약 모달 맨 아래로 자동 스크롤
+            setTimeout(() => {
+                const modal = document.getElementById('reserveModal');
+                if (modal) {
+                    modal.scrollTop = modal.scrollHeight;
+                }
+            }, 100);
         });
 
         // Close Button (Reset or Keep?)
@@ -724,6 +765,19 @@
                     selectedDate = info.dateStr;
                     openReserveModal(selectedDate);
                 },
+                eventClick: function (info) {
+                    const event = info.event;
+                    const start = event.start;
+                    const end = event.end;
+                    const title = event.title;
+                    const purpose = event.extendedProps.purpose || '(목적 없음)';
+
+                    const startStr = start ? `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}` : '';
+                    const endStr = end ? `${end.getHours().toString().padStart(2, '0')}:${end.getMinutes().toString().padStart(2, '0')}` : '';
+                    const dateStr = start ? `${start.getFullYear()}-${(start.getMonth() + 1).toString().padStart(2, '0')}-${start.getDate().toString().padStart(2, '0')}` : '';
+
+                    showAlert(`📅 ${dateStr}\n⏰ ${startStr} ~ ${endStr}\n📝 ${purpose}`);
+                },
                 select: function (info) {
                     selectedDate = info.startStr;
                     openReserveModal(selectedDate);
@@ -757,10 +811,23 @@
 
             document.getElementById('displayDate').innerText = `${items[0]}년 ${items[1]}월 ${items[2]}일`;
 
+            // Reset Time Selection to 09:00~10:00
+            document.getElementById('resStartTime').value = '09:00';
+            document.getElementById('resEndTime').value = '10:00';
+
             // Reset Recurring
             document.getElementById('checkRecurring').checked = false;
             document.getElementById('recurringOptions').style.display = 'none';
             document.getElementById('repeatCount').value = '2';
+
+            // Reset Signature (서명 초기화)
+            finalSignatureData = null;
+            hasSignature = false;
+            document.getElementById('signaturePreview').style.display = 'none';
+            document.getElementById('sigImage').src = '';
+            btnOpenSign.innerHTML = '<i class="fas fa-signature me-2"></i>서명하기 (터치)';
+            btnOpenSign.classList.remove('btn-outline-secondary');
+            btnOpenSign.classList.add('btn-outline-dark');
 
             // Fetch availability and disable booked slots
             fetchAvailability(dateStr);
