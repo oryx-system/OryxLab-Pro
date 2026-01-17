@@ -17,7 +17,8 @@
 </div>
 
 <!-- Floating Feedback Button -->
-<button class="btn btn-dark rounded-circle shadow-lg position-fixed bottom-0 end-0 m-4"
+<button
+    class="btn btn-primary rounded-circle shadow-lg position-fixed bottom-0 end-0 m-4 d-flex align-items-center justify-content-center"
     style="width: 60px; height: 60px; z-index: 1050;" title="버그 제보 및 건의사항" data-bs-toggle="modal"
     data-bs-target="#feedbackModal">
     <i class="fas fa-comment-dots fa-lg"></i>
@@ -30,6 +31,46 @@
         <div class="card shadow-lg border-0 h-100">
             <div class="card-body p-0">
                 <div id="calendar" class="p-3"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Feedback Display Section -->
+<div class="row mt-4">
+    <div class="col-lg-12">
+        <div class="card shadow-lg border-0">
+            <div class="card-header bg-white border-0 py-3">
+                <h5 class="mb-0 fw-bold">
+                    <i class="fas fa-comments me-2 text-primary"></i>
+                    사용자 피드백
+                </h5>
+                <small class="text-muted">여러분의 소중한 의견을 공유합니다</small>
+            </div>
+            <div class="card-body p-0">
+                {% if feedbacks %}
+                <div class="list-group list-group-flush">
+                    {% for fb in feedbacks %}
+                    <div class="list-group-item py-3">
+                        <div class="d-flex align-items-start">
+                            <div class="flex-grow-1">
+                                <p class="mb-2">{{ fb.action }}</p>
+                                <small class="text-muted">
+                                    <i class="far fa-clock me-1"></i>
+                                    {{ fb.timestamp.strftime('%Y-%m-%d %H:%M') }}
+                                </small>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-center py-5 text-muted">
+                    <i class="fas fa-inbox fa-3x mb-3 opacity-25"></i>
+                    <p class="mb-0">아직 등록된 피드백이 없습니다.</p>
+                    <small>첫 번째 피드백을 남겨주세요!</small>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
@@ -175,20 +216,54 @@
                         <div class="form-check form-switch">
                             <input class="form-check-input" type="checkbox" id="checkRecurring">
                             <label class="form-check-label fw-bold" for="checkRecurring">
-                                정기 예약 설정 <span class="badge bg-success ms-1">New</span>
+                                연속 예약 <span class="badge bg-success ms-1">New</span>
                             </label>
-                            <small class="d-block text-muted">매주 같은 시간에 반복해서 예약합니다.</small>
+                            <small class="d-block text-muted">선택한 날짜부터 연속으로 같은 시간에 예약합니다.</small>
                         </div>
                         <div class="mt-3 ps-2" id="recurringOptions" style="display: none;">
-                            <label class="form-label small fw-bold mb-1">총 반복 횟수 (이번 주 포함)</label>
-                            <select class="form-select form-select-sm" id="repeatCount">
-                                <option value="2">2주 (2회)</option>
-                                <option value="3">3주 (3회)</option>
-                                <option value="4">4주 (4회)</option>
-                            </select>
-                            <div class="form-text small text-info">
-                                <i class="fas fa-info-circle me-1"></i>선택한 날짜부터 <strong>매주 1회씩</strong> 자동 예약됩니다.<br>
-                                (예: 4주 선택 시 오늘, 다음 주, 다다음 주, 3주 후 예약)
+                            <!-- Repeat Mode Selection -->
+                            <div class="mb-3">
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="repeatMode" id="modeDaily"
+                                        value="daily" checked>
+                                    <label class="form-check-label small" for="modeDaily">매일 (연속)</label>
+                                </div>
+                                <div class="form-check form-check-inline">
+                                    <input class="form-check-input" type="radio" name="repeatMode" id="modeWeekly"
+                                        value="weekly">
+                                    <label class="form-check-label small" for="modeWeekly">매주 (같은 요일)</label>
+                                </div>
+                            </div>
+
+                            <!-- Options for Daily (Consecutive) -->
+                            <div id="dailyOptions">
+                                <label class="form-label small fw-bold mb-1">연속 예약 일수</label>
+                                <select class="form-select form-select-sm" id="recurringDays" style="width: 150px;">
+                                    <option value="2">2일 연속</option>
+                                    <option value="3">3일 연속</option>
+                                    <option value="4">4일 연속</option>
+                                    <option value="5">5일 연속</option>
+                                    <option value="6">6일 연속</option>
+                                    <option value="7" selected>7일 연속 (1주일)</option>
+                                </select>
+                            </div>
+
+                            <!-- Options for Weekly -->
+                            <div id="weeklyOptions" style="display: none;">
+                                <label class="form-label small fw-bold mb-1">반복 주수</label>
+                                <select class="form-select form-select-sm" id="recurringWeeks" style="width: 150px;">
+                                    <option value="2">2주</option>
+                                    <option value="3">3주</option>
+                                    <option value="4" selected>4주</option>
+                                </select>
+                            </div>
+
+                            <!-- Preview for both -->
+                            <div class="mt-2" id="recurringPreview">
+                                <div class="alert alert-info py-2 small mb-0">
+                                    <i class="fas fa-calendar-week me-1"></i>
+                                    <strong>예약 상세:</strong> <span id="recurringDates">-</span>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -263,22 +338,25 @@
 <!-- Feedback Modal -->
 <div class="modal fade" id="feedbackModal" tabindex="-1">
     <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content border-0">
-            <div class="modal-header bg-dark text-white">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-primary text-white border-0">
                 <h5 class="modal-title fw-bold text-white"><i class="fas fa-comment-dots me-2"></i>기능 제안 및 버그 신고</h5>
                 <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
             </div>
-            <div class="modal-body">
-                <div class="alert alert-success py-2 mb-3">
+            <div class="modal-body p-4">
+                <div class="alert alert-success border-0 py-2 mb-3">
                     <i class="fas fa-user-secret me-2"></i>
                     <strong>익명으로 처리됩니다.</strong> 개인정보는 수집되지 않습니다.
                 </div>
-                <p class="text-muted small">서비스 이용 중 불편한 점이나 추가되었으면 하는 기능이 있다면 자유롭게 남겨주세요.</p>
+                <p class="text-muted small mb-3">서비스 이용 중 불편한 점이나 추가되었으면 하는 기능이 있다면 자유롭게 남겨주세요.</p>
                 <textarea class="form-control" id="feedbackMsg" rows="5" placeholder="내용을 입력해주세요..."></textarea>
+                <div class="text-end mt-2">
+                    <small class="text-muted" id="charCount">0 / 500자</small>
+                </div>
             </div>
             <div class="modal-footer border-0">
-                <button type="button" class="btn btn-light rounded-pill" data-bs-dismiss="modal">취소</button>
-                <button type="button" class="btn btn-dark rounded-pill px-4" id="btnSendFeedback">보내기</button>
+                <button type="button" class="btn btn-outline-secondary rounded-pill" data-bs-dismiss="modal">취소</button>
+                <button type="button" class="btn btn-primary rounded-pill px-4" id="btnSendFeedback">보내기</button>
             </div>
         </div>
     </div>
@@ -774,7 +852,23 @@
 
                     const startStr = start ? `${start.getHours().toString().padStart(2, '0')}:${start.getMinutes().toString().padStart(2, '0')}` : '';
                     const endStr = end ? `${end.getHours().toString().padStart(2, '0')}:${end.getMinutes().toString().padStart(2, '0')}` : '';
-                    const dateStr = start ? `${start.getFullYear()}-${(start.getMonth() + 1).toString().padStart(2, '0')}-${start.getDate().toString().padStart(2, '0')}` : '';
+
+                    // Check if multi-day reservation
+                    let dateStr = '';
+                    if (start && end) {
+                        const startDate = `${start.getFullYear()}-${(start.getMonth() + 1).toString().padStart(2, '0')}-${start.getDate().toString().padStart(2, '0')}`;
+                        const endDate = `${end.getFullYear()}-${(end.getMonth() + 1).toString().padStart(2, '0')}-${end.getDate().toString().padStart(2, '0')}`;
+
+                        if (startDate !== endDate) {
+                            // Multi-day: show date range
+                            dateStr = `${startDate} ~ ${endDate}`;
+                        } else {
+                            // Single day: show only start date
+                            dateStr = startDate;
+                        }
+                    } else if (start) {
+                        dateStr = `${start.getFullYear()}-${(start.getMonth() + 1).toString().padStart(2, '0')}-${start.getDate().toString().padStart(2, '0')}`;
+                    }
 
                     showAlert(`📅 ${dateStr}\n⏰ ${startStr} ~ ${endStr}\n📝 ${purpose}`);
                 },
@@ -818,7 +912,11 @@
             // Reset Recurring
             document.getElementById('checkRecurring').checked = false;
             document.getElementById('recurringOptions').style.display = 'none';
-            document.getElementById('repeatCount').value = '2';
+            document.getElementById('recurringDays').value = '2';
+            document.getElementById('recurringWeeks').value = '2';
+            document.getElementById('modeDaily').checked = true;
+            document.getElementById('dailyOptions').style.display = 'block';
+            document.getElementById('weeklyOptions').style.display = 'none';
 
             // Reset Signature (서명 초기화)
             finalSignatureData = null;
@@ -837,25 +935,28 @@
         }
 
         // Fetch and mark booked time slots
+        // Fetch and mark booked time slots
         async function fetchAvailability(dateStr) {
             try {
                 const res = await fetch(`/api/reservations/availability?date=${dateStr}`);
                 const data = await res.json();
-                const booked = data.booked || [];
 
+                if (data.error) {
+                    console.error('Availability Error:', data.error);
+                    return;
+                }
+
+                const booked = data.booked || [];
                 const startSelect = document.getElementById('resStartTime');
                 const endSelect = document.getElementById('resEndTime');
 
                 // Reset all options to enabled
-                Array.from(startSelect.options).forEach(opt => {
-                    opt.disabled = false;
-                    opt.style.color = '';
-                    opt.style.backgroundColor = '';
-                });
-                Array.from(endSelect.options).forEach(opt => {
-                    opt.disabled = false;
-                    opt.style.color = '';
-                    opt.style.backgroundColor = '';
+                [startSelect, endSelect].forEach(select => {
+                    Array.from(select.options).forEach(opt => {
+                        opt.disabled = false;
+                        opt.style.color = '';
+                        opt.style.backgroundColor = '';
+                    });
                 });
 
                 // Check each time slot against booked slots
@@ -880,20 +981,11 @@
                     // Trigger change to update end times
                     startSelect.dispatchEvent(new Event('change'));
                 }
-            } catch (e) {
-                console.error('Availability fetch error:', e);
+
+            } catch (err) {
+                console.error('Fetch Check Error:', err);
             }
         }
-
-        // Toggle Recurring Options
-        document.getElementById('checkRecurring').addEventListener('change', function () {
-            const options = document.getElementById('recurringOptions');
-            if (this.checked) {
-                options.style.display = 'block';
-            } else {
-                options.style.display = 'none';
-            }
-        });
 
         // Submit Logic
         document.getElementById('btnSubmit').addEventListener('click', function () {
@@ -939,8 +1031,8 @@
                 start: `${selectedDate}T${startTime}:00`,
                 end: `${selectedDate}T${endTime}:00`,
                 signature: signatureData,
-                repeat_type: document.getElementById('checkRecurring').checked ? 'weekly' : null,
-                repeat_count: document.getElementById('checkRecurring').checked ? parseInt(document.getElementById('repeatCount').value) : 1,
+                repeat_type: document.getElementById('checkRecurring').checked ? 'daily' : null,
+                repeat_count: document.getElementById('checkRecurring').checked ? parseInt(document.getElementById('recurringDays').value) : 1,
                 // New Fields
                 applicant_type: document.querySelector('input[name="applicantType"]:checked')?.value || '개인',
                 org_name: document.getElementById('resOrgName')?.value || '',
@@ -991,8 +1083,29 @@
         });
 
         // Feedback Logic
+        const feedbackMsg = document.getElementById('feedbackMsg');
+        const charCount = document.getElementById('charCount');
+        const maxChars = 500;
+
+        // Character counter
+        feedbackMsg.addEventListener('input', function () {
+            const currentLength = this.value.length;
+            charCount.textContent = `${currentLength} / ${maxChars}자`;
+
+            if (currentLength > maxChars) {
+                this.value = this.value.substring(0, maxChars);
+                charCount.textContent = `${maxChars} / ${maxChars}자`;
+                charCount.classList.add('text-danger');
+            } else if (currentLength > maxChars * 0.9) {
+                charCount.classList.remove('text-danger');
+                charCount.classList.add('text-warning');
+            } else {
+                charCount.classList.remove('text-danger', 'text-warning');
+            }
+        });
+
         document.getElementById('btnSendFeedback').addEventListener('click', function () {
-            const msg = document.getElementById('feedbackMsg').value;
+            const msg = feedbackMsg.value;
             if (!msg.trim()) { showAlert('내용을 입력해주세요.'); return; }
 
             // Disable button
@@ -1009,7 +1122,9 @@
                     if (data.success) {
                         const modal = bootstrap.Modal.getInstance(document.getElementById('feedbackModal'));
                         modal.hide();
-                        document.getElementById('feedbackMsg').value = '';
+                        feedbackMsg.value = '';
+                        charCount.textContent = '0 / 500자';
+                        charCount.classList.remove('text-danger', 'text-warning');
                         showAlert('소중한 의견 감사합니다!');
                     } else {
                         showAlert('전송 실패: ' + data.error);
@@ -1020,6 +1135,61 @@
                     showAlert('서버 통신 오류');
                 });
         });
+
+        // Recurring Reservation Event Handlers
+        const checkRecurring = document.getElementById('checkRecurring');
+        const optionsDiv = document.getElementById('recurringOptions');
+        const dailyOptions = document.getElementById('dailyOptions');
+        const weeklyOptions = document.getElementById('weeklyOptions');
+        const modeRadios = document.getElementsByName('repeatMode');
+
+        checkRecurring.addEventListener('change', function () {
+            if (this.checked) {
+                optionsDiv.style.display = 'block';
+                updateRecurringPreview();
+            } else {
+                optionsDiv.style.display = 'none';
+            }
+        });
+
+        // Toggle inputs based on mode
+        modeRadios.forEach(radio => {
+            radio.addEventListener('change', function () {
+                if (this.value === 'daily') {
+                    dailyOptions.style.display = 'block';
+                    weeklyOptions.style.display = 'none';
+                } else {
+                    dailyOptions.style.display = 'none';
+                    weeklyOptions.style.display = 'block';
+                }
+                updateRecurringPreview();
+            });
+        });
+
+        document.getElementById('recurringDays').addEventListener('change', updateRecurringPreview);
+        document.getElementById('recurringWeeks').addEventListener('change', updateRecurringPreview);
+
+        function updateRecurringPreview() {
+            const datesSpan = document.getElementById('recurringDates');
+            const mode = document.querySelector('input[name="repeatMode"]:checked').value;
+
+            if (!selectedDate) return;
+
+            const start = new Date(selectedDate);
+            const formatDate = (d) => `${d.getMonth() + 1}/${d.getDate()}`;
+
+            if (mode === 'daily') {
+                const days = parseInt(document.getElementById('recurringDays').value);
+                const end = new Date(selectedDate);
+                end.setDate(end.getDate() + days - 1);
+                datesSpan.textContent = `${formatDate(start)} ~ ${formatDate(end)} (${days}일 연속)`;
+            } else {
+                const weeks = parseInt(document.getElementById('recurringWeeks').value);
+                const end = new Date(selectedDate);
+                end.setDate(end.getDate() + (weeks - 1) * 7);
+                datesSpan.textContent = `${formatDate(start)}부터 ${weeks}주간 매주 같은 요일 (총 ${weeks}회)`;
+            }
+        }
     });
 </script>
 {% endblock %}

@@ -146,9 +146,16 @@
                                     {% endif %}
                                 </td>
                                 <td>
+                                    {% if r.start_time.date() != r.end_time.date() %}
+                                    <div class="fw-bold">{{ r.start_time.strftime('%Y-%m-%d') }} ~ {{
+                                        r.end_time.strftime('%Y-%m-%d') }}</div>
+                                    <small class="text-muted">{{ r.start_time.strftime('%H:%M') }} ~ {{
+                                        r.end_time.strftime('%H:%M') }}</small>
+                                    {% else %}
                                     <div class="fw-bold">{{ r.start_time.strftime('%Y-%m-%d') }}</div>
                                     <small class="text-muted">{{ r.start_time.strftime('%H:%M') }} ~ {{
                                         r.end_time.strftime('%H:%M') }}</small>
+                                    {% endif %}
                                 </td>
                                 <td>
                                     {{ r.name }}<br>

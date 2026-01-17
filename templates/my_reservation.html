@@ -186,6 +186,18 @@
 
     document.getElementById('btnLookUp').addEventListener('click', loadHistory);
 
+    // 엔터 키로 조회
+    document.getElementById('myPassword').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            loadHistory();
+        }
+    });
+    document.getElementById('myPhone').addEventListener('keypress', function (e) {
+        if (e.key === 'Enter') {
+            loadHistory();
+        }
+    });
+
     function loadHistory() {
         const phone = document.getElementById('myPhone').value;
         const password = document.getElementById('myPassword').value;
@@ -263,12 +275,14 @@
     const fileNameDisplay = document.getElementById('fileName');
     let checkoutPhone = '';
 
-    photoInput.addEventListener('change', function () {
-        if (this.files && this.files[0]) {
-            fileNameDisplay.innerText = this.files[0].name;
-            fileNameDisplay.classList.add('fw-bold', 'text-success');
-        }
-    });
+    if (photoInput) {
+        photoInput.addEventListener('change', function () {
+            if (this.files && this.files[0] && fileNameDisplay) {
+                fileNameDisplay.innerText = this.files[0].name;
+                fileNameDisplay.classList.add('fw-bold', 'text-success');
+            }
+        });
+    }
 
     window.openCheckout = function () {
         checkoutPhone = currentPhone;
@@ -346,13 +360,33 @@
                 btnHtml = `<button class="btn btn-sm btn-success rounded-pill px-3 shadow" onclick="openCheckout()"><i class="fas fa-camera me-1"></i>퇴실/청소 인증</button>`;
             }
 
+            // Check if multi-day reservation
+            const startDate = item.start.split(' ')[0];
+            const startTime = item.start.split(' ')[1];
+            const endParts = item.end.split(' ');
+            const endDate = endParts.length > 1 ? endParts[0] : startDate;
+            const endTime = endParts.length > 1 ? endParts[1] : item.end;
+
+            const isMultiDay = startDate !== endDate;
+
+            let dateDisplay, timeDisplay;
+            if (isMultiDay) {
+                // Multi-day: Show date range
+                dateDisplay = `${startDate} ~ ${endDate}`;
+                timeDisplay = `${startTime} ~ ${endTime}`;
+            } else {
+                // Single day: Show only date
+                dateDisplay = startDate;
+                timeDisplay = `${startTime} ~ ${endTime}`;
+            }
+
             // Added Name display
             card.innerHTML = `
                 <div class="card-body p-4">
                     <div class="d-flex justify-content-between align-items-center mb-3">
                         <div>
-                            <h5 class="fw-bold mb-1">${item.start.split(' ')[0]}</h5>
-                            <div class="text-primary fw-bold">${item.start.split(' ')[1]} ~ ${item.end}</div>
+                            <h5 class="fw-bold mb-1">${dateDisplay}</h5>
+                            <div class="text-primary fw-bold">${timeDisplay}</div>
                         </div>
                         ${statusMap[item.status] || item.status}
                     </div>
@@ -366,9 +400,12 @@
                         <button class="btn btn-sm btn-outline-primary flex-grow-1" onclick="previewPdf('${item.id}')">
                             <i class="fas fa-file-pdf me-1"></i>신청서 미리보기
                         </button>
-                        <button class="btn btn-sm btn-outline-dark flex-grow-1" onclick="sendPdfToAdmin('${item.id}')">
-                            <i class="fas fa-paper-plane me-1"></i>관리자에게 제출
-                        </button>
+                        <div class="flex-grow-1 d-flex align-items-center gap-1">
+                            <span class="badge bg-success py-2 flex-grow-1"><i class="fas fa-check me-1"></i>자동 제출됨</span>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="resendPdfToAdmin('${item.id}')" title="재전송">
+                                <i class="fas fa-redo"></i>
+                            </button>
+                        </div>
                     </div>
                     <div class="text-end border-top pt-3">
                         ${btnHtml}
@@ -400,13 +437,13 @@
             .catch(err => showAlert('오류: ' + err.message));
     }
 
-    function sendPdfToAdmin(id) {
-        if (!confirm('시설 사용 신청서를 관리자에게 제출하시겠습니까?')) return;
+    function resendPdfToAdmin(id) {
+        if (!confirm('신청서를 관리자에게 다시 전송하시겠습니까?')) return;
 
         const phone = document.getElementById('myPhone').value;
         const password = document.getElementById('myPassword').value;
 
-        fetch(`/api/reservations/${id}/send_to_admin`, {
+        fetch(`/api/reservations/${id}/resend_telegram`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ phone: phone, password: password })
@@ -414,9 +451,9 @@
             .then(res => res.json())
             .then(data => {
                 if (data.success) {
-                    showAlert('신청서가 관리자에게 제출되었습니다.');
+                    showAlert('신청서가 재전송되었습니다.');
                 } else {
-                    showAlert('제출 실패: ' + data.error);
+                    showAlert('전송 실패: ' + data.error);
                 }
             })
             .catch(err => showAlert('서버 통신 오류'));

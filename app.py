@@ -217,6 +217,7 @@ class Reservation(db.Model):
     birth_date = db.Column(db.String(20), nullable=True)  # 생년월일
     address = db.Column(db.String(200), nullable=True)  # 주소
     email = db.Column(db.String(100), nullable=True)  # 이메일
+    recurring_group_id = db.Column(db.String(50), nullable=True)  # 정기예약 그룹 ID
     created_at = db.Column(db.DateTime, default=datetime.now)
 
     def to_dict(self):
@@ -423,7 +424,12 @@ def index():
     if not notice:
         notice = "없음"
     
-    return render_template('index.html', notice=notice)
+    # 최근 피드백 10개 조회
+    feedbacks = AdminLog.query.filter_by(admin_type='feedback')\
+                              .order_by(AdminLog.timestamp.desc())\
+                              .limit(10).all()
+    
+    return render_template('index.html', notice=notice, feedbacks=feedbacks)
 
 @app.context_processor
 def inject_privacy_policy():
@@ -709,18 +715,29 @@ def get_availability():
     day_start = target_date.replace(hour=0, minute=0, second=0)
     day_end = target_date.replace(hour=23, minute=59, second=59)
     
+    # Find all reservations that overlap with this date
+    # This includes: single-day reservations AND multi-day reservations spanning this date
     reservations = Reservation.query.filter(
-        Reservation.start_time >= day_start,
         Reservation.start_time <= day_end,
+        Reservation.end_time >= day_start,
         Reservation.status.in_(['reserved', 'checked_in'])
     ).all()
     
     booked_slots = []
     for res in reservations:
-        booked_slots.append({
-            'start': res.start_time.strftime('%H:%M'),
-            'end': res.end_time.strftime('%H:%M')
-        })
+        # For multi-day reservations, use the daily time slot
+        if res.start_time.date() != res.end_time.date():
+            # Multi-day: use time portion only
+            booked_slots.append({
+                'start': res.start_time.strftime('%H:%M'),
+                'end': res.end_time.strftime('%H:%M')
+            })
+        else:
+            # Single-day: use actual times
+            booked_slots.append({
+                'start': res.start_time.strftime('%H:%M'),
+                'end': res.end_time.strftime('%H:%M')
+            })
     
     return jsonify({'date': date_str, 'booked': booked_slots})
 
@@ -753,8 +770,16 @@ def create_reservation():
 
     # 1. Prepare Target Slots
     target_slots = []
-    if repeat_type == 'weekly' and repeat_count > 1:
-        # Limit max to 4 for safety
+    recurring_group_id = None
+    
+    if repeat_type == 'daily':
+        # 매일 연속 예약 - 단일 예약으로 생성 (시작일~종료일)
+        days = min(max(repeat_count, 2), 7)  # 2일 ~ 7일 제한
+        # 마지막 날의 종료 시간 계산
+        final_end = base_end + timedelta(days=days - 1)
+        target_slots.append((base_start, final_end))
+    elif repeat_type == 'weekly' and repeat_count > 1:
+        # 기존 매주 반복 로직 (호환성 유지)
         count = min(repeat_count, 4)
         for i in range(count):
             delta = timedelta(weeks=i)
@@ -820,31 +845,69 @@ def create_reservation():
             if should_block:
                 return jsonify({'error': f'[{nth_label}] 해당 기간은 예약이 일시 중지되었습니다.\n사유: {reason}'}), 403
 
-        # B. Overlap Check
-        overlap = Reservation.query.filter(
+        # B. Overlap Check (Refined for multi-day reservations)
+        # For multi-day reservations, we need to check if the time slots overlap on the same date
+        # Example: 1/22-1/24 09:00-10:00 should NOT block 1/22 14:00-15:00
+        
+        overlapping_reservations = Reservation.query.filter(
             Reservation.start_time < e_time,
             Reservation.end_time > s_time,
             Reservation.status.in_(['reserved', 'checked_in'])
-        ).first()
-        
-        if overlap:
-            return jsonify({'error': f'[{nth_label}] 이미 예약된 시간입니다.'}), 409
-
-        # C. Daily Limit Check
-        t_start = s_time.replace(hour=0, minute=0, second=0, microsecond=0)
-        t_end = s_time.replace(hour=23, minute=59, second=59, microsecond=999999)
-        daily_res = Reservation.query.filter(
-            Reservation.phone == phone,
-            Reservation.start_time >= t_start,
-            Reservation.start_time <= t_end,
-            Reservation.status.in_(['reserved', 'checked_in', 'ended'])
         ).all()
         
-        total_minutes = sum([(r.end_time - r.start_time).total_seconds() / 60 for r in daily_res])
-        new_duration = (e_time - s_time).total_seconds() / 60
-        
-        if total_minutes + new_duration > 240:
-             return jsonify({'error': f'[{nth_label}] 하루 최대 4시간까지만 이용 가능합니다.'}), 400
+        for existing in overlapping_reservations:
+            # Check if this is a multi-day reservation
+            existing_is_multi_day = existing.start_time.date() != existing.end_time.date()
+            new_is_multi_day = s_time.date() != e_time.date()
+            
+            if existing_is_multi_day or new_is_multi_day:
+                # For multi-day reservations, check daily time slot conflicts
+                # Assume multi-day reservations use the same time slot each day
+                existing_start_time = existing.start_time.time()
+                existing_end_time = existing.end_time.time()
+                new_start_time = s_time.time()
+                new_end_time = e_time.time()
+                
+                # Check if date ranges overlap
+                date_overlap = not (e_time.date() < existing.start_time.date() or s_time.date() > existing.end_time.date())
+                
+                if date_overlap:
+                    # Check if time slots overlap (on the same day)
+                    time_overlap = not (new_end_time <= existing_start_time or new_start_time >= existing_end_time)
+                    if time_overlap:
+                        return jsonify({'error': f'[{nth_label}] 이미 예약된 시간입니다.'}), 409
+            else:
+                # Both are single-day reservations, use simple overlap check
+                return jsonify({'error': f'[{nth_label}] 이미 예약된 시간입니다.'}), 409
+
+        # C. Daily Limit Check (Skip for multi-day reservations being created)
+        is_multi_day = s_time.date() != e_time.date()
+        if not is_multi_day:
+            t_start = s_time.replace(hour=0, minute=0, second=0, microsecond=0)
+            t_end = s_time.replace(hour=23, minute=59, second=59, microsecond=999999)
+            daily_res = Reservation.query.filter(
+                Reservation.phone == phone,
+                Reservation.start_time >= t_start,
+                Reservation.start_time <= t_end,
+                Reservation.status.in_(['reserved', 'checked_in', 'ended'])
+            ).all()
+            
+            total_minutes = 0
+            for r in daily_res:
+                # For multi-day reservations, only count the daily time slot
+                if r.start_time.date() != r.end_time.date():
+                    # Multi-day reservation: calculate daily time slot
+                    daily_duration = (r.end_time.time().hour * 60 + r.end_time.time().minute) - \
+                                   (r.start_time.time().hour * 60 + r.start_time.time().minute)
+                    total_minutes += daily_duration
+                else:
+                    # Single-day reservation: use actual duration
+                    total_minutes += (r.end_time - r.start_time).total_seconds() / 60
+            
+            new_duration = (e_time - s_time).total_seconds() / 60
+            
+            if total_minutes + new_duration > 240:
+                 return jsonify({'error': f'[{nth_label}] 하루 최대 4시간까지만 이용 가능합니다.'}), 400
 
         # Ready to create
         new_res = Reservation(
@@ -863,7 +926,8 @@ def create_reservation():
             expected_count=int(data.get('expected_count')) if data.get('expected_count') else None,
             birth_date=data.get('birth_date', ''),
             address=data.get('address', ''),
-            email=data.get('email', '')
+            email=data.get('email', ''),
+            recurring_group_id=recurring_group_id
         )
         reservations_to_create.append(new_res)
 
@@ -896,16 +960,26 @@ def create_reservation():
         first_res = reservations_to_create[0]
         count = len(reservations_to_create)
         
-        type_str = f"[정기 예약 {count}건]" if count > 1 else "[새 예약]"
+        # 정기예약 타입 판별
+        if repeat_type == 'daily':
+            type_str = "🔁 [연속 정기예약 완료]"
+            period_str = f"\n📅 기간: {first_res.start_time.strftime('%Y-%m-%d')} ~ {reservations_to_create[-1].start_time.strftime('%Y-%m-%d')} ({count}일)\n⏰ 매일 {first_res.start_time.strftime('%H:%M')} ~ {first_res.end_time.strftime('%H:%M')}\n📊 총 {count}회"
+        elif count > 1:
+            type_str = f"[정기 예약 {count}건]"
+            period_str = f"\n- 기간: {count}주간 반복"
+        else:
+            type_str = "[새 예약]"
+            period_str = ""
         
         # PII Masking (Default: ON, can be disabled in developer settings)
         mask_enabled = get_setting('telegram_mask_info', 'true') == 'true'
         safe_name = mask_name(first_res.name) if mask_enabled else first_res.name
         safe_phone = mask_phone(first_res.phone) if mask_enabled else first_res.phone
         
-        msg = f"{type_str}\n- 예약자: {safe_name}\n- 전화번호: {safe_phone}\n- 사용목적: {first_res.purpose}\n- 예약일시: {first_res.start_time.strftime('%Y-%m-%d %H:%M')} ~ {first_res.end_time.strftime('%H:%M')}"
-        if count > 1:
-            msg += f"\n- 기간: {count}주간 반복"
+        msg = f"{type_str}\n\n{safe_name}님의 예약이 등록되었습니다.\n\n📍 목적: {first_res.purpose}"
+        if repeat_type != 'daily':
+            msg += f"\n- 예약일시: {first_res.start_time.strftime('%Y-%m-%d %H:%M')} ~ {first_res.end_time.strftime('%H:%M')}"
+        msg += period_str
         
         send_telegram_alert(msg)
     except:
@@ -1022,7 +1096,7 @@ def my_history_api():
                 'purpose': r.purpose,
                 'status': r.status,
                 'start': r.start_time.strftime('%Y-%m-%d %H:%M'),
-                'end': r.end_time.strftime('%H:%M'),
+                'end': r.end_time.strftime('%Y-%m-%d %H:%M'),  # Changed to include date
                 'wifi_info': wifi_info,
                 'door_pw': door_pw
             })
@@ -1515,15 +1589,45 @@ def _generate_pdf_buffer(res):
     if res.signature_blob:
         try:
             img_io = io.BytesIO(res.signature_blob)
-            # Width/Height tuned: Significantly larger (40mm)
-            sig_img_flowable = PlatypusImage(img_io, width=40*mm, height=15*mm)
+            # Read original dimensions to maintain aspect ratio
+            from PIL import Image as PILImage
+            pil_img = PILImage.open(img_io)
+            orig_w, orig_h = pil_img.size
+            img_io.seek(0)  # Reset for ReportLab
+            
+            # Fixed width, calculate height proportionally
+            target_width = 40*mm
+            aspect_ratio = orig_h / orig_w
+            target_height = target_width * aspect_ratio
+            
+            # Cap max height to prevent overflow
+            max_height = 20*mm
+            if target_height > max_height:
+                target_height = max_height
+                target_width = target_height / aspect_ratio
+                
+            sig_img_flowable = PlatypusImage(img_io, width=target_width, height=target_height)
         except Exception as e:
             print(f"Signature Blob Error: {e}")
     elif res.signature_path:
         sig_full_path = os.path.join(instance_path, 'signatures', res.signature_path)
         if os.path.exists(sig_full_path):
             try:
-                sig_img_flowable = PlatypusImage(sig_full_path, width=40*mm, height=15*mm)
+                # Read original dimensions to maintain aspect ratio
+                from PIL import Image as PILImage
+                pil_img = PILImage.open(sig_full_path)
+                orig_w, orig_h = pil_img.size
+                
+                target_width = 40*mm
+                aspect_ratio = orig_h / orig_w
+                target_height = target_width * aspect_ratio
+                
+                max_height = 20*mm
+                if target_height > max_height:
+                    target_height = max_height
+                    target_width = target_height / aspect_ratio
+                    
+                sig_img_flowable = PlatypusImage(sig_full_path, width=target_width, height=target_height)
             except Exception as e:
                 print(f"Signature File Error: {e}")
     
@@ -2847,6 +2951,39 @@ def create_init_data():
         db.create_all(bind='logs')
     except:
         pass
+        
+    # [Auto Migration] Check and Add Missing Columns for admin_log
+    try:
+        import sqlite3
+        # Connect to main DB directly to avoid SQLAlchemy session issues during migration
+        db_path = os.path.join(app.instance_path, 'library.db')
+        if os.path.exists(db_path):
+            conn = sqlite3.connect(db_path)
+            c = conn.cursor()
+            c.execute("PRAGMA table_info(admin_log)")
+            columns = [col[1] for col in c.fetchall()]
+            
+            if 'old_value' not in columns:
+                print("[AUTO-MIGRATION] Adding 'old_value' column...")
+                c.execute("ALTER TABLE admin_log ADD COLUMN old_value TEXT")
+                
+            if 'new_value' not in columns:
+                print("[AUTO-MIGRATION] Adding 'new_value' column...")
+                c.execute("ALTER TABLE admin_log ADD COLUMN new_value TEXT")
+            
+            # [Auto Migration] Check and Add recurring_group_id to reservation
+            c.execute("PRAGMA table_info(reservation)")
+            res_columns = [col[1] for col in c.fetchall()]
+            
+            if 'recurring_group_id' not in res_columns:
+                print("[AUTO-MIGRATION] Adding 'recurring_group_id' column to reservation...")
+                c.execute("ALTER TABLE reservation ADD COLUMN recurring_group_id VARCHAR(50)")
+                
+            conn.commit()
+            conn.close()
+    except Exception as e:
+        print(f"[ERROR] Migration Error: {e}")
+
     
     # Init default settings if empty
     if not Settings.query.all():
@@ -3131,7 +3268,9 @@ def diagnostics():
         'os': os.name
     })
 
+# Ensure initialization runs on module load (for Gunicorn)
+with app.app_context():
+    create_init_data()
+
 if __name__ == '__main__':
-    with app.app_context():
-        create_init_data()
     app.run(host='0.0.0.0', port=5000, debug=True)
